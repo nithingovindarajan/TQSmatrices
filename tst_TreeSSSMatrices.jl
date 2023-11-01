@@ -3,30 +3,28 @@ using .TreeSSSMatrices
 using LinearAlgebra
 using Test
 
-A = ZeroMatrix{Float64}(4,2)
-A[1,1]
 
-@test 0 == 0
+######################################
+# Test 1: construct a spinner matrix #
+######################################
+id = 1;
+neighbors = [2, 3, 6];
+A = Matrix(undef, 3, 3);
+A[1, 1], A[1, 2], A[1, 3] = rand(3, 4), rand(3, 2), rand(3, 3);
+A[2, 1], A[2, 2], A[2, 3] = rand(4, 4), rand(4, 2), rand(4, 3);
+A[3, 1], A[3, 2], A[3, 3] = rand(2, 4), rand(2, 2), rand(2, 3);
+B = [rand(3,2),
+     rand(4,2),
+     rand(2,2)];
+C = [rand(3,4), rand(3,2), rand(3,3) ];
+D = rand(3, 2);
+spinner = Spinner{Float64}(id, neighbors, A, B, C, D);
 
+@test get_A(spinner,2,6) == A[1,3]
+@test get_B(spinner,2) == B[1]
+@test get_C(spinner,3) == C[2]
+@test get_D(spinner) == D
 
-length(Set([1, 2,2, 3])) == length([1,2,2,3])
-
-all([true,false,true])
-
-
-a = [1,4,6,3]
-
-b = [x>=3  for  x in a]
-
-A = rand(Int,3,2)
-B = rand(Int,3,2)
-
-matrix_of_matrices = Matrix{Matrix{Int}}(undef, 2, 2)
-matrix_of_matrices[1,1]=A
-matrix_of_matrices[2,1]=B
-matrix_of_matrices[1,2]=A
-matrix_of_matrices[2,2]=B
-
-
-
-hmm = convert(Matrix{AbstractMatrix{Float64}}, matrix_of_matrices)
+######################################
+# Test 2: construct a spinner matrix #
+######################################

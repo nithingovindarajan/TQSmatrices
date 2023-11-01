@@ -4,7 +4,7 @@ module TreeSSSMatrices
 ###########
 # exports #
 ###########
-export ZeroMatrix, Spinner
+export ZeroMatrix, Spinner, get_A, get_B, get_C, get_D, get_p
 
 
 ############
@@ -36,7 +36,7 @@ Base.:Matrix(A::ZeroMatrix) = zeros(eltype(A), A.m, A.n)
 ###########
 struct Spinner{Scalar<:Number}
     id::UInt
-    neighbors::Vector{Uint}
+    neighbors::Vector{UInt}
     index_map::Dict{UInt,UInt}
     A::Matrix{AbstractMatrix{Scalar}}
     B::Vector{AbstractMatrix{Scalar}}
@@ -55,7 +55,7 @@ struct Spinner{Scalar<:Number}
         @assert all(x -> x > 0, neighbors)
 
         # spinners cannot have its own node id as neighbor
-        @assert any(x -> x == id, neighbors)
+        @assert all(x -> x != id, neighbors)
 
         # neighbor list is unique
         @assert length(Set(neighbors)) == length(neighbors)
@@ -77,14 +77,14 @@ struct Spinner{Scalar<:Number}
         end
 
         # construct
-        new{T}(
+        new{Scalar}(
             id,
             neighbors,
             Dict(node => i for (i, node) in enumerate(neighbors)),
             convert(Matrix{AbstractMatrix{Scalar}}, A),
-            convert(Matrix{AbstractMatrix{Scalar}}, B),
-            convert(Matrix{AbstractMatrix{Scalar}}, C),
-            convert(Matrix{AbstractMatrix{Scalar}}, D),
+            convert(Vector{AbstractMatrix{Scalar}}, B),
+            convert(Vector{AbstractMatrix{Scalar}}, C),
+            convert(AbstractMatrix{Scalar}, D),
             size(D, 1),
             size(D, 2),
             [size(el, 1) for el in B],
@@ -112,12 +112,17 @@ end
 # Check if vector of Spinners is a valid (infinite) GIRS representation #
 #########################################################################
 
-# a vector of spinners of size N:
-# - the nodes id should correspond with the index in the vector
-# - neighbor index n should  1<=n<=N
-# - spinner i is a neighbor of spinner j iff spinner j is a neighbor of spinner i
-# - dimension checks
 
+function is_consistent_GIRS(nodes::Vector{Spinner{T}}) where {T<:Number}
+    # nodes id should correspond with the index in the vector
+    
+    # neighbor index n should  1<=n<=N
+
+    # spinner i is a neighbor of spinner j iff spinner j is a neighbor of spinner i
+
+    # dimension checks
+
+end
 
 #########################################
 # Check if vector of Spinners is a tree #
@@ -138,10 +143,10 @@ end
 # TreeSSS #
 ###########
 struct TreeSSS{Scalar<:Number}
-    spinners::Vector{Spinner{Scalar}}
-    m::Vector[UInt]
-    n::Vector[UInt]
-    no_nodes::Int
+    nodes::Vector{Spinner{Scalar}}
+    m::Vector{UInt}
+    n::Vector{UInt}
+    no_nodes::UInt
 
     # useful tree attributes
     tree_order::Int
