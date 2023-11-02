@@ -1,5 +1,5 @@
-include("TreeSSSMatrices.jl")
-using .TreeSSSMatrices
+include("TSSMatrices.jl")
+using .TSSMatrices
 using LinearAlgebra
 using Test
 
@@ -18,12 +18,12 @@ B = [rand(3,2),
      rand(2,2)];
 C = [rand(3,4), rand(3,2), rand(3,3) ];
 D = rand(3, 2);
-spinner = Spinner{Float64}(id, neighbors, A, B, C, D);
+node = Spinner{Float64}(id, neighbors, A, B, C, D);
 
-@test get_A(spinner,2,6) == A[1,3]
-@test get_B(spinner,2) == B[1]
-@test get_C(spinner,3) == C[2]
-@test get_D(spinner) == D
+@test get_A(node,2,6) == A[1,3]
+@test get_B(node,2) == B[1]
+@test get_C(node,3) == C[2]
+@test get_D(node) == D
 
 ######################################
 # Test 2: construct a spinner matrix #

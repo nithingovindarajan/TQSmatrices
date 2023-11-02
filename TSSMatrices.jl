@@ -1,10 +1,10 @@
-module TreeSSSMatrices
+module TSSMatrices
 
 
 ###########
 # exports #
 ###########
-export ZeroMatrix, Spinner, get_A, get_B, get_C, get_D, get_p, TreeSSS
+export ZeroMatrix, Spinner, get_A, get_B, get_C, get_D, get_p, TSS
 
 
 ############
@@ -167,10 +167,10 @@ end
 #######################################################
 
 
-###########
-# TreeSSS #
-###########
-struct TreeSSS{Scalar<:Number}
+################
+# TSS matrices #
+################
+struct TSS{Scalar<:Number}
     nodes::Vector{Spinner{Scalar}}
     m::Vector{UInt}
     n::Vector{UInt}
@@ -187,7 +187,7 @@ struct TreeSSS{Scalar<:Number}
     # parent::Vector{Union{Int,Nothing}}
     # children::Vector{Vector{Int}}
 
-    function TreeSSS{Scalar}(nodes) where {Scalar<:Number}
+    function TSS{Scalar}(nodes) where {Scalar<:Number}
         # checks
         @assert GIRS_is_consistent(nodes)
         @assert GIRS_is_tree(nodes)
@@ -203,40 +203,40 @@ struct TreeSSS{Scalar<:Number}
         new{Scalar}(nodes, m, n, no_nodes, M, N, index_map)
     end
 end
-get_node(T::TreeSSS, i) = T.node[T.index_map[i]]
-get_m(T::TreeSSS, i) = T.m[T.index_map[i]]
+get_node(T::TSS, i) = T.node[T.index_map[i]]
+get_m(T::TSS, i) = T.m[T.index_map[i]]
 get_n(T:::TreeSSS, i) = T.n[T.index_map[i]]
-Base.:size(T::TreeSSS) = (T.M, T.N)
+Base.:size(T::TSS) = (T.M, T.N)
 
 
-##################
-# SSS to TreeSSS #
-##################
+##############
+# SSS to TSS #
+##############
 
 
-##################
-# HSS to TreeSSS #
-##################
+##############
+# HSS to TSS #
+##############
 
 
-###########################
-# TreeSSS to dense matrix #
-###########################
+#######################
+# TSS to dense matrix #
+#######################
 
 
-##################################
-# TreeSSS matrix vector multiply #
-##################################
+##############################
+# TSS matrix vector multiply #
+##############################
 
 
-########################
-# TreeSSS construction #
-########################
+####################
+# TSS construction #
+####################
 
 
-#################
-# TreeSSS solve #
-#################
+#############
+# TSS solve #
+#############
 
 
 end
