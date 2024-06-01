@@ -4,7 +4,7 @@ module TSSMatrices
 ###########
 # exports #
 ###########
-export ZeroMatrix, Spinner, get_A, get_B, get_C, get_D, get_p, TSS
+export ZeroMatrix, Spinner, GIRS_is_consistent, TSS
 
 
 ############
@@ -12,6 +12,7 @@ export ZeroMatrix, Spinner, get_A, get_B, get_C, get_D, get_p, TSS
 ############
 using LinearAlgebra
 using IterTools
+
 
 ##############
 # ZeroMatrix #
@@ -30,6 +31,21 @@ function Base.:getindex(A::ZeroMatrix, i::Int, j::Int)
 end
 Base.:Matrix(A::ZeroMatrix) = zeros(eltype(A), A.m, A.n)
 
+################
+# IndexedTable #
+################
+struct IndexedTable{T<:Any}
+    array::Matrix{T}
+    index_map::Dict{UInt,UInt}
+    function IndexedTable{T}(array , labels) where {T<:Any}
+        @assert size(array,1) == size(array,2)
+        @assert size(array,1) == length(labels)
+        new{T}(convert(Matrix{T},array),  Dict(label => i for (i, label) in enumerate(labels)) )
+    end
+end
+Base.:getindex(A::IndexedTable,i,j) = A.array[A.index_map[i],A.index_map[j]]
+IndexedTable(array,labels) = IndexedTable{eltype(array)}(array,labels)
+    
 
 ###########
 # Spinner #
@@ -37,21 +53,16 @@ Base.:Matrix(A::ZeroMatrix) = zeros(eltype(A), A.m, A.n)
 struct Spinner{Scalar<:Number}
     id::UInt
     neighbors::Vector{UInt}
-    index_map::Dict{UInt,UInt}
-    A::Matrix{AbstractMatrix{Scalar}}
-    B::Vector{AbstractMatrix{Scalar}}
-    C::Vector{AbstractMatrix{Scalar}}
+    A::IndexedTable{AbstractMatrix{Scalar}}
+    B::Dict{UInt,AbstractMatrix{Scalar}}
+    C::Dict{UInt,AbstractMatrix{Scalar}}
     D::AbstractMatrix{Scalar}
     m::Int
     n::Int
-    p_in::Vector{UInt}
-    p_out::Vector{UInt}
+    p_in::Dict{UInt,UInt} 
+    p_out::Dict{UInt,UInt} 
 
     function Spinner{Scalar}(id, neighbors, A, B, C, D) where {Scalar<:Number}
-        # id is positive
-        @assert id > 0
-        # neighbors are positive integers
-        @assert all(x -> x > 0, neighbors)
         # spinners cannot have its own node id as neighbor
         @assert all(x -> x != id, neighbors)
         # neighbor list is unique
@@ -74,25 +85,18 @@ struct Spinner{Scalar<:Number}
         new{Scalar}(
             id,
             neighbors,
-            Dict(node => i for (i, node) in enumerate(neighbors)),
-            convert(Matrix{AbstractMatrix{Scalar}}, A),
-            convert(Vector{AbstractMatrix{Scalar}}, B),
-            convert(Vector{AbstractMatrix{Scalar}}, C),
+            IndexedTable{AbstractMatrix{Scalar}}(A,neighbors),
+            Dict(j => convert(AbstractMatrix{Scalar},b) for (j, b) in zip(neighbors,B)),
+            Dict(j => convert(AbstractMatrix{Scalar},c) for (j, c) in zip(neighbors,C)),
             convert(AbstractMatrix{Scalar}, D),
             size(D, 1),
             size(D, 2),
-            [size(el, 2) for el in C],
-            [size(el, 1) for el in B],
+            Dict(j => size(c,2) for (j, c) in zip(neighbors,C)),
+            Dict(j => size(b,1) for (j, b) in zip(neighbors,B)),
         )
     end
 end
-get_A(S::Spinner, i, j) = S.A[S.index_map[i], S.index_map[j]]
-get_B(S::Spinner, i) = S.B[S.index_map[i]]
-get_C(S::Spinner, j) = S.C[S.index_map[j]]
-get_D(S::Spinner) = S.D
-get_p_in(S::Spinner, i) = S.p_in[S.index_map[i]]
-get_p_out(S::Spinner, i) = S.p_out[S.index_map[i]]
-Base.:size(S::spinner) = (S.m, S.n)
+Base.:size(S::Spinner) = (S.m, S.n)
 
 #########################################################################
 # Check if vector of spinners is a valid (infinite) GIRS representation #
@@ -102,8 +106,6 @@ Base.:size(S::spinner) = (S.m, S.n)
 function GIRS_is_consistent(nodes::Vector{Spinner{scalar}}) where {scalar<:Number}
     no_nodes = length(nodes)
     for node in nodes
-        # nodes id's n should be between 1<=n<=N
-        @assert 1 <= node.id <= no_nodes
         # neighbor of id  should be between 1<=n<=N
         @assert all(x -> 1 <= x <= no_nodes, node.neighbors)
         for neighbor in node.neighbors
@@ -116,97 +118,97 @@ function GIRS_is_consistent(nodes::Vector{Spinner{scalar}}) where {scalar<:Numbe
 
 end
 
-#########################################
-# Check if vector of spinners is a tree #
-#########################################
+# #########################################
+# # Check if vector of spinners is a tree #
+# #########################################
 
-function GIRS_is_tree(nodes::Vector{Spinner{T}}) where {T<:Number}
+# function GIRS_is_tree(nodes::Vector{Spinner{T}}) where {T<:Number}
 
-    # create adjency list
-    no_nodes = length(nodes)
-    adj_list = Dict(node.id => node.neighbors for node in nodes)
+#     # create adjency list
+#     no_nodes = length(nodes)
+#     adj_list = Dict(node.id => node.neighbors for node in nodes)
 
-    # Depth first search
-    visited = falses(no_nodes)
-    stack = [(start_node, -1)]
-    while !isempty(stack)
-        node, prev = pop!(stack)
-        visited[node] = true
+#     # Depth first search
+#     visited = falses(no_nodes)
+#     stack = [(start_node, -1)]
+#     while !isempty(stack)
+#         node, prev = pop!(stack)
+#         visited[node] = true
 
-        for neighbor in adj_list[node]
-            if !visited[neighbor]
-                push!(stack, (neighbor, node))
-            elseif neighbor != prev
-                return false  # Back edge, so it's not a tree
-            end
-        end
-    end
+#         for neighbor in adj_list[node]
+#             if !visited[neighbor]
+#                 push!(stack, (neighbor, node))
+#             elseif neighbor != prev
+#                 return false  # Back edge, so it's not a tree
+#             end
+#         end
+#     end
 
-    # Check if all nodes are visited
-    if sum(visited) == no_nodes
-        return true
-    else
-        return false  # Some nodes are disconnected
-    end
-end
+#     # Check if all nodes are visited
+#     if sum(visited) == no_nodes
+#         return true
+#     else
+#         return false  # Some nodes are disconnected
+#     end
+# end
 
-###############################################
-# Check if all bounce back operators are null #
-###############################################
+# ###############################################
+# # Check if all bounce back operators are null #
+# ###############################################
 
-function GIRS_has_no_bounce_back_operators(nodes::Vector{Spinner{T}}) where {T<:Number}
-    for node in nodes
-        for i in node.neighbors
-            @assert isa(get_A(node, i, i), ZeroMatrix)
-        end
-    end
-end
+# function GIRS_has_no_bounce_back_operators(nodes::Vector{Spinner{T}}) where {T<:Number}
+#     for node in nodes
+#         for i in node.neighbors
+#             @assert isa(get_A(node, i, i), ZeroMatrix)
+#         end
+#     end
+# end
 
-#######################################################
-# Determine leaf order, parents and children of nodes #
-#######################################################
+# #######################################################
+# # Determine leaf order, parents and children of nodes #
+# #######################################################
 
 
-################
-# TSS matrices #
-################
-struct TSS{Scalar<:Number}
-    nodes::Vector{Spinner{Scalar}}
-    m::Vector{UInt}
-    n::Vector{UInt}
-    no_nodes::UInt
-    M::UInt
-    N::UInt
-    index_map::Dict{UInt,UInt}
+# ################
+# # TSS matrices #
+# ################
+# struct TSS{Scalar<:Number}
+#     nodes::Vector{Spinner{Scalar}}
+#     m::Vector{UInt}
+#     n::Vector{UInt}
+#     no_nodes::UInt
+#     M::UInt
+#     N::UInt
+#     index_map::Dict{UInt,UInt}
 
-    # useful tree attributes
-    # tree_order::Int
-    # leaf_order::Any
-    # k_leafs::Vector{Int}
-    # root_node::Int
-    # parent::Vector{Union{Int,Nothing}}
-    # children::Vector{Vector{Int}}
+#     # useful tree attributes
+#     # tree_order::Int
+#     # leaf_order::Any
+#     # k_leafs::Vector{Int}
+#     # root_node::Int
+#     # parent::Vector{Union{Int,Nothing}}
+#     # children::Vector{Vector{Int}}
 
-    function TSS{Scalar}(nodes) where {Scalar<:Number}
-        # checks
-        @assert GIRS_is_consistent(nodes)
-        @assert GIRS_is_tree(nodes)
-        @assert GIRS_has_no_bounce_back_operators(nodes)
+#     function TSS{Scalar}(nodes) where {Scalar<:Number}
+#         # checks
+#         @assert GIRS_is_consistent(nodes)
+#         @assert GIRS_is_tree(nodes)
+#         @assert GIRS_has_no_bounce_back_operators(nodes)
 
-        # construct
-        m = [node.m for node in nodes]
-        n = [node.n for node in nodes]
-        no_nodes = length(nodes)
-        M = sum(m)
-        N = sum(n)
-        index_map = Dict(node.id => i for (i, node) in enumerate(nodes))
-        new{Scalar}(nodes, m, n, no_nodes, M, N, index_map)
-    end
-end
-get_node(T::TSS, i) = T.node[T.index_map[i]]
-get_m(T::TSS, i) = T.m[T.index_map[i]]
-get_n(T:::TreeSSS, i) = T.n[T.index_map[i]]
-Base.:size(T::TSS) = (T.M, T.N)
+#         # construct
+#         m = [node.m for node in nodes]
+#         n = [node.n for node in nodes]
+#         no_nodes = length(nodes)
+#         M = sum(m)
+#         N = sum(n)
+#         index_map = Dict(node.id => i for (i, node) in enumerate(nodes))
+#         new{Scalar}(nodes, m, n, no_nodes, M, N, index_map)
+#     end
+# end
+# get_node(T::TSS, i) = T.node[T.index_map[i]]
+# get_m(T::TSS, i) = T.m[T.index_map[i]]
+# get_n(T:::TreeSSS, i) = T.n[T.index_map[i]]
+# Base.:size(T::TSS) = (T.M, T.N)
 
 
 ##############

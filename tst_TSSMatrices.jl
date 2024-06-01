@@ -20,11 +20,11 @@ C = [rand(3,4), rand(3,2), rand(3,3) ];
 D = rand(3, 2);
 node = Spinner{Float64}(id, neighbors, A, B, C, D);
 
-@test get_A(node,2,6) == A[1,3]
-@test get_B(node,2) == B[1]
-@test get_C(node,3) == C[2]
-@test get_D(node) == D
+@test node.A[2,6] == A[1,3]
+@test node.B[2] == B[1]
+@test node.C[3] == C[2]
+@test node.D == D
 
-######################################
-# Test 2: construct a spinner matrix #
-######################################
+########################################################
+# Test 2: Checking if vector of spinners is consistent #
+########################################################
