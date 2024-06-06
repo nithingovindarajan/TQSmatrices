@@ -177,8 +177,9 @@ node6 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 @test node6.out[4] == out[2]
 @test node6.D == D
 
-
 nodeset_acyclic = IndexedVector{Spinner}([node1, node2, node3, node4, node5, node6])
+
+
 
 # A non tree graph:
 #              1 -- 2 -- 5
@@ -274,6 +275,7 @@ inp = [rand(p41, m4),
 out = [rand(n4, p14), rand(n4, p34)];
 D = rand(n4, m4);
 node4 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
+typeof(node4)
 
 @test node4.trans[1, 3] == trans[1, 2]
 @test node4.inp[3] == inp[2]
@@ -315,7 +317,7 @@ nodeset_cyclic = IndexedVector{Spinner}([node1, node2, node3, node4, node5])
 # Test: determine tree hierarchy #
 ##################################
 
-# Considered graph:
+# recall graph:
 #         3 -- 1 -- 2 
 #              |
 #         4 -- 6 -- 5
@@ -344,6 +346,65 @@ tree_depth, levels, parent, children = determine_tree_hierarchy(nodeset_acyclic,
 @assert children[5] == Set([])
 
 
-###############################
-# Test: determine tree levels #
-###############################
+##############################
+# Test: construct TQS matrix #
+##############################
+
+# recall graph:
+#         3 -- 1 -- 2 
+#              |
+#         4 -- 6 -- 5
+
+
+T = TQSMatrix(nodeset_acyclic, [1, 2, 3, 4, 5, 6], 1)
+
+T11 = T.spinners[1].D                                                                   #                1 
+T21 = T.spinners[2].out[1] * T.spinners[1].inp[2]                                   #           2 <- 1 
+T31 = T.spinners[3].out[1] * T.spinners[1].inp[3]                                 #           3 <- 1
+T41 = T.spinners[4].out[6] * T.spinners[6].trans[4, 1] * T.spinners[1].inp[6]           #      4 <- 6 <- 1 
+T51 = T.spinners[5].out[6] * T.spinners[6].trans[5, 1] * T.spinners[1].inp[6]           #      5 <- 6 <- 1 
+T61 = T.spinners[6].out[1] * T.spinners[1].inp[6]                   #           6 <- 1
+
+T12 = T.spinners[1].out[2] * T.spinners[2].inp[1]                 #           1 <- 2
+T22 = T.spinners[2].D    #                2
+T32 = T.spinners[3].out[1] * T.spinners[1].trans[3, 2] * T.spinners[2].inp[1]                 #      3 <- 1 <- 2
+T42 = T.spinners[4].out[6] * T.spinners[6].trans[4, 1] * T.spinners[1].trans[6, 2] * T.spinners[2].inp[1]   # 4 <- 6 <- 1 <- 2
+T52 = T.spinners[5].out[6] * T.spinners[6].trans[5, 1] * T.spinners[1].trans[6, 2] * T.spinners[2].inp[1]   # 6 <- 1 <- 1 <- 2
+T62 = T.spinners[6].out[1] * T.spinners[1].trans[6, 2] * T.spinners[2].inp[1]                 #      6 <- 1 <- 2
+
+
+T13 = T.spinners[1].out[3] * T.spinners[3].inp[1]                 #           1 <- 3 
+T23 = T.spinners[2].out[1] * T.spinners[1].trans[2, 3] * T.spinners[3].inp[1]                 #      2 <- 1 <- 3
+T33 = T.spinners[3].D    #                3
+T43 = T.spinners[4].out[6] * T.spinners[6].trans[4, 1] * T.spinners[1].trans[6, 3] * T.spinners[3].inp[1]                  # 4 <- 6 <- 1 <- 3  
+T53 = T.spinners[5].out[6] * T.spinners[6].trans[5, 1] * T.spinners[1].trans[6, 3] * T.spinners[3].inp[1]                 # 5 <- 6 <- 1 <- 3  
+T63 = T.spinners[6].out[1] * T.spinners[1].trans[6, 3] * T.spinners[3].inp[1]                    #      6 <- 1 <- 3
+
+T14 = T.spinners[1].out[6] * T.spinners[6].trans[1, 4] * T.spinners[4].inp[6]                  #      1 <- 6 <- 4 
+T24 = T.spinners[2].out[1] * T.spinners[1].trans[2, 6] * T.spinners[6].trans[1, 4] * T.spinners[4].inp[6]  # 2 <- 1 <- 6 <- 4 
+T34 = T.spinners[3].out[1] * T.spinners[1].trans[3, 6] * T.spinners[6].trans[1, 4] * T.spinners[4].inp[6]                # 3 <- 1 <- 6 <- 4
+T44 = T.spinners[4].D    #                4
+T54 = T.spinners[5].out[6] * T.spinners[6].trans[5, 4] * T.spinners[4].inp[6]                 #      5 <- 6 <- 4
+T64 = T.spinners[6].out[4] * T.spinners[4].inp[6]                  #           6 <- 4    
+
+T15 = T.spinners[1].out[6] * T.spinners[6].trans[1, 5] * T.spinners[5].inp[6]                 #      1 <- 6 <- 5
+T25 = T.spinners[2].out[1] * T.spinners[1].trans[2, 6] * T.spinners[6].trans[1, 5] * T.spinners[5].inp[6]                # 2 <- 1 <- 6 <- 5
+T35 = T.spinners[3].out[1] * T.spinners[1].trans[3, 6] * T.spinners[6].trans[1, 5] * T.spinners[5].inp[6]                 # 3 <- 1 <- 6 <- 5 
+T45 = T.spinners[4].out[6] * T.spinners[6].trans[4, 5] * T.spinners[5].inp[6]                  #      4 <- 6 <- 5 
+T55 = T.spinners[5].D    #                5
+T65 = T.spinners[6].out[5] * T.spinners[5].inp[6]                 #           6 <- 5
+
+T16 = T.spinners[1].out[6] * T.spinners[6].inp[1]                 #           1 <- 6
+T26 = T.spinners[2].out[1] * T.spinners[1].trans[2, 6] * T.spinners[6].inp[1]                 #      2 <- 1 <- 6
+T36 = T.spinners[3].out[1] * T.spinners[1].trans[3, 6] * T.spinners[6].inp[1]                   #      3 <- 1 <- 6
+T46 = T.spinners[4].out[6] * T.spinners[6].inp[4]                   #           4 <- 6
+T56 = T.spinners[5].out[6] * T.spinners[6].inp[5]                    #           5 <- 6
+T66 = T.spinners[6].D    #                6 
+
+
+Tdense = [                                     T11 T12 T13 T14 T15 T16
+	T21 T22 T23 T24 T25 T26
+	T31 T32 T33 T34 T35 T36
+	T41 T42 T43 T44 T45 T46
+	T51 T52 T53 T54 T55 T56
+	T61 T62 T63 T64 T65 T66]

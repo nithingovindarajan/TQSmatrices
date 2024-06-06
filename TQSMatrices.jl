@@ -175,6 +175,8 @@ struct Spinner{Scalar <: Number}
 end
 Base.:size(S::Spinner) = (S.m, S.n)
 IndexedVector{Spinner}(S) = Dict(s.id => s for s in S)
+Base.eltype(x::Spinner) = typeof(x).parameters[1]
+
 
 
 #########################################################################
@@ -292,51 +294,59 @@ end
 ################
 # TQS matrices #
 ################
-# struct TQSMatrix{Scalar <: Number}
-# 	# spinners
-# 	spinners::IndexedVector{Spinner{Scalar}}
-# 	# tree attributes
-# 	node_ordering::Vector{UInt}
-# 	K::UInt
-# 	adjecency_list::IndexedVector{Vector{UInt}}
-# 	root::UInt
-# 	levels::Vector{Vector{UInt}}
-# 	tree_depth::Uint
-# 	# dimensions
-# 	m::IndexedVector{UInt}
-# 	n::IndexedVector{UInt}
-# 	M::UInt
-# 	N::UInt
+struct TQSMatrix{Scalar <: Number}
+	# spinners
+	spinners::IndexedVector{Spinner{Scalar}}
+	# tree attributes
+	node_ordering::Vector{UInt}
+	K::UInt
+	adjecency_list::IndexedVector{Vector{UInt}}
+	root::UInt
+	levels::Vector{Vector{UInt}}
+	parent::IndexedVector{Union{UInt, Nothing}}
+	children::IndexedVector{Set{UInt}}
+	tree_depth::UInt
+	# dimensions
+	m::IndexedVector{UInt}
+	n::IndexedVector{UInt}
+	M::UInt
+	N::UInt
 
-# 	function TQSMatrix{Scalar}(spinners, node_ordering, root) where {Scalar <: Number}
+	function TQSMatrix{Scalar}(spinners, node_ordering, root) where {Scalar <: Number}
 
-# 		# correctness of input dimensions
-#       @assert all([spinners[k].id == k for k in keys(spinners)])            
-# 		@assert length(spinners) == length(node_ordering)
-# 		@assert Set([s.id for s in spinners]) == Set(node_ordering)
-# 		@assert root in node_ordering
+		# correctness of input
+		@assert all(s -> eltype(s) == Scalar, values(spinners))
+		@assert all([spinners[k].id == k for k in keys(spinners)])
+		@assert length(spinners) == length(node_ordering)
+		@assert Set(keys(spinners)) == Set(node_ordering)
+		@assert root in node_ordering
 
-# 		# checks spinners generate a valid TQS matrix
-# 		@assert GIRS_is_consistent(spinners)
-# 		@assert GIRS_is_tree(spinners)
-# 		@assert GIRS_has_no_bounce_back_operators(spinners)
+		# checks spinners generate a valid TQS matrix
+		@assert GIRS_is_consistent(spinners)
+		@assert GIRS_is_tree(spinners)
+		@assert GIRS_has_no_bounce_back_operators(spinners)
 
-# 		# construct
-# 		K = length(nodes_ordering)
-# 		levels = determine_tree_hierarchy(spinners, root)
-# 		m = [node.m for node in nodeset]
-# 		n = [node.n for node in nodeset]
-
-# 		M = sum(m)
-# 		N = sum(n)
-# 		index_map = Dict(node.id => i for (i, node) in enumerate(nodeset))
-# 		new{Scalar}(nodeset, m, n, no_nodes, M, N, index_map)
-# 	end
-# end
-# Base.:size(T::TQSMatrix) = (T.M, T.N)
-# function Base.:Matrix(T::TQSMatrix)
-# 	return 0
-# end
+		# construct
+		K = length(node_ordering)
+		adjecency_list = Dict(s.id => s.neighbors for s in values(spinners))
+		tree_depth, levels, parent, children = determine_tree_hierarchy(spinners, root)
+		m = Dict(s.id => s.m for s in values(spinners))
+		n = Dict(s.id => s.n for s in values(spinners))
+		M = sum(values(m))
+		N = sum(values(n))
+		new{Scalar}(spinners, node_ordering, K, adjecency_list, root, levels, parent,
+			children, tree_depth, m, n, M, N)
+	end
+end
+function TQSMatrix(spinners, node_ordering, root)
+	@assert !isempty(spinners)
+	T = eltype(spinners[1])
+	return TQSMatrix{T}(spinners, node_ordering, root)
+end
+Base.:size(T::TQSMatrix) = (T.M, T.N)
+function Base.:Matrix(T::TQSMatrix)
+	return 0
+end
 
 ##############################
 # TQS matrix vector multiply #
