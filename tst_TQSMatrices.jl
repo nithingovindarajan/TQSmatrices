@@ -14,11 +14,11 @@ using Test
 #         4 -- 5 
 
 nodes = [3, 1, 2, 4, 5]
-m = [6, 7, 5, 4, 8]
-n = [5, 8, 4, 3, 7]
+m = [10, 12, 14, 16, 18]
+n = [11, 13, 15, 17, 19]
 M = sum(m)
 N = sum(n)
-adjacency_list = Dict{UInt, Vector{UInt}}()
+adjacency_list = Dict{Int, Vector{Int}}()
 adjacency_list[1] = [2, 3]
 adjacency_list[2] = [1]
 adjacency_list[3] = [1]
@@ -29,23 +29,23 @@ tmp_m = [0; cumsum(m)]
 tmp_n = [0; cumsum(n)]
 
 A = GraphPartitionedMatrix(mat, nodes, m, n, adjacency_list)
-@assert all([A.m[nodes[k]] == m[k] for k in eachindex(nodes)])
-@assert all([A.n[nodes[k]] == n[k] for k in eachindex(nodes)])
-@assert all([A.mrange[nodes[k]] == tmp_m[k]+1:tmp_m[k+1] for k in eachindex(nodes)])
-@assert all([A.nrange[nodes[k]] == tmp_n[k]+1:tmp_n[k+1] for k in eachindex(nodes)])
-@assert all([get_block(A, nodes[k], nodes[l]) == A.mat[tmp_m[k]+1:tmp_m[k+1], tmp_n[l]+1:tmp_n[l+1]] for k in eachindex(nodes), l in eachindex(nodes)])
+@test all([A.m[nodes[k]] == m[k] for k in eachindex(nodes)])
+@test all([A.n[nodes[k]] == n[k] for k in eachindex(nodes)])
+@test all([A.mrange[nodes[k]] == tmp_m[k]+1:tmp_m[k+1] for k in eachindex(nodes)])
+@test all([A.nrange[nodes[k]] == tmp_n[k]+1:tmp_n[k+1] for k in eachindex(nodes)])
+@test all([get_block(A, nodes[k], nodes[l]) == A.mat[tmp_m[k]+1:tmp_m[k+1], tmp_n[l]+1:tmp_n[l+1]] for k in eachindex(nodes), l in eachindex(nodes)])
 nodeset_in = rand(nodes)
 nodeset_out = rand(nodes, 2)
-@assert get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
 nodeset_in = rand(nodes, 2)
 nodeset_out = rand(nodes)
-@assert get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
 nodeset_in = rand(nodes, 2)
 nodeset_out = rand(nodes, 2)
-@assert get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
 nodeset_in = [2 3]
 nodeset_out = [1, 4, 5]
-@assert get_hankelblock(A, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_hankelblock(A, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
 
 ####################################
 # Test: construct spinner matrices #
@@ -57,32 +57,32 @@ nodeset_out = [1, 4, 5]
 #         4 -- 6 -- 5
 
 # input dimensions
-n1 = 6
-n2 = 8
-n3 = 7
-n4 = 9
-n5 = 5
-n6 = 7
+n1 = 13
+n2 = 15
+n3 = 17
+n4 = 19
+n5 = 21
+n6 = 23
 # output dimensions
-m1 = 6
-m2 = 8
-m3 = 7
-m4 = 9
-m5 = 5
-m6 = 7
+m1 = 12
+m2 = 14
+m3 = 16
+m4 = 18
+m5 = 20
+m6 = 22
 # state dimensions
-p12 = 3
+p12 = 1
 p21 = 2
 p13 = 3
-p31 = 2
-p12 = 2
-p21 = 2
-p46 = 4
-p64 = 5
-p56 = 2
-p65 = 1
-p16 = 2
-p61 = 1
+p31 = 4
+p12 = 5
+p21 = 6
+p46 = 7
+p64 = 8
+p56 = 9
+p65 = 10
+p16 = 11
+p61 = 12
 
 id = 1;
 neighbors = [2, 3, 6];
@@ -90,11 +90,11 @@ trans = Matrix(undef, 3, 3);
 trans[1, 1], trans[1, 2], trans[1, 3] = ZeroMatrix(p12, p21), rand(p12, p31), rand(p12, p61);
 trans[2, 1], trans[2, 2], trans[2, 3] = rand(p13, p21), ZeroMatrix(p13, p31), rand(p13, p61);
 trans[3, 1], trans[3, 2], trans[3, 3] = rand(p16, p21), rand(p16, p31), ZeroMatrix(p16, p61);
-inp = [rand(p12, m1),
-	rand(p13, m1),
-	rand(p16, m1)];
-out = [rand(n1, p21), rand(n1, p31), rand(n1, p61)];
-D = rand(n1, m1);
+inp = [rand(p12, n1),
+	rand(p13, n1),
+	rand(p16, n1)];
+out = [rand(m1, p21), rand(m1, p31), rand(m1, p61)];
+D = rand(m1, n1);
 node1 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 
 @test node1.trans[2, 6] == trans[1, 3]
@@ -165,10 +165,10 @@ trans = Matrix(undef, 3, 3);
 trans[1, 1], trans[1, 2], trans[1, 3] = ZeroMatrix(p61, p16), rand(p61, p46), rand(p61, p56);
 trans[2, 1], trans[2, 2], trans[2, 3] = rand(p64, p16), ZeroMatrix(p64, p46), rand(p64, p56);
 trans[3, 1], trans[3, 2], trans[3, 3] = rand(p65, p16), rand(p65, p46), ZeroMatrix(p65, p56);
-inp = [rand(p61, m6),
-	rand(p64, m6),
-	rand(p65, m6)];
-out = [rand(n6, p16), rand(n6, p46), rand(n6, p56)];
+inp = [rand(p61, n6),
+	rand(p64, n6),
+	rand(p65, n6)];
+out = [rand(m6, p16), rand(m6, p46), rand(m6, p56)];
 D = rand(m6, n6);
 node6 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 
@@ -187,30 +187,30 @@ nodeset_acyclic = IndexedVector{Spinner}([node1, node2, node3, node4, node5, nod
 #              4 -- 3
 
 # input dimensions
-n1 = 6
-n2 = 8
-n3 = 7
-n4 = 9
-n5 = 5
+n1 = 13
+n2 = 15
+n3 = 17
+n4 = 19
+n5 = 21
 # output dimensions
-m1 = 6
-m2 = 8
-m3 = 7
-m4 = 9
-m5 = 5
+m1 = 14
+m2 = 16
+m3 = 18
+m4 = 20
+m5 = 22
 # state dimensions
-p12 = 3
+p12 = 1
 p21 = 2
 p14 = 3
-p41 = 2
-p25 = 3
-p52 = 2
-p14 = 2
-p41 = 2
-p23 = 2
-p32 = 2
-p43 = 2
-p34 = 2
+p41 = 4
+p25 = 5
+p52 = 6
+p14 = 7
+p41 = 8
+p23 = 9
+p32 = 10
+p43 = 11
+p34 = 12
 
 
 id = 1;
@@ -218,10 +218,11 @@ neighbors = [2, 4];
 trans = Matrix(undef, 2, 2);
 trans[1, 1], trans[1, 2] = ZeroMatrix(p12, p21), rand(p12, p41)
 trans[2, 1], trans[2, 2] = rand(p14, p21), ZeroMatrix(p14, p41)
-inp = [rand(p12, m1),
-	rand(p14, m1)];
-out = [rand(n1, p21), rand(n1, p31)];
-D = rand(n1, m1);
+inp = [rand(p12, n1),
+	rand(p14, n1)];
+out = [rand(m1, p21), rand(m1, p41)];
+D = rand(m1, n1);
+
 node1 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 
 @test node1.trans[2, 4] == trans[1, 2]
@@ -275,7 +276,7 @@ inp = [rand(p41, m4),
 out = [rand(n4, p14), rand(n4, p34)];
 D = rand(n4, m4);
 node4 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
-typeof(node4)
+
 
 @test node4.trans[1, 3] == trans[1, 2]
 @test node4.inp[3] == inp[2]
@@ -303,15 +304,15 @@ nodeset_cyclic = IndexedVector{Spinner}([node1, node2, node3, node4, node5])
 # Test: Checking if vector of spinners is consistent #
 ######################################################
 
-@assert GIRS_is_consistent(nodeset_acyclic)
-@assert GIRS_is_consistent(nodeset_cyclic)
+@test GIRS_is_consistent(nodeset_acyclic)
+@test GIRS_is_consistent(nodeset_cyclic)
 
 #####################################################################
 # Test: Checking if vector of spinners has no bounce back operators #
 #####################################################################
 
-@assert GIRS_has_no_bounce_back_operators(nodeset_acyclic)
-@assert !GIRS_has_no_bounce_back_operators(nodeset_cyclic)
+@test GIRS_has_no_bounce_back_operators(nodeset_acyclic)
+@test !GIRS_has_no_bounce_back_operators(nodeset_cyclic)
 
 ##################################
 # Test: determine tree hierarchy #
@@ -322,33 +323,47 @@ nodeset_cyclic = IndexedVector{Spinner}([node1, node2, node3, node4, node5])
 #              |
 #         4 -- 6 -- 5
 
-tree_depth, levels, parent, children = determine_tree_hierarchy(nodeset_acyclic, 1)
-@assert tree_depth == 2
-@assert Set(levels[1]) == Set([1])
-@assert Set(levels[2]) == Set([3, 2, 6])
-@assert Set(levels[3]) == Set([4, 5])
-@assert isnothing(parent[1])
-@assert parent[2] == 1
-@assert parent[6] == 1
-@assert children[1] == Set([3, 6, 2])
-@assert children[6] == Set([4, 5])
-@assert children[2] == Set([])
-
-tree_depth, levels, parent, children = determine_tree_hierarchy(nodeset_acyclic, 2)
-@assert tree_depth == 3
-@assert Set(levels[1]) == Set([2])
-@assert Set(levels[2]) == Set([1])
-@assert Set(levels[3]) == Set([3, 6])
-@assert Set(levels[4]) == Set([4, 5])
-@assert children[2] == Set([1])
-@assert children[1] == Set([3, 6])
-@assert children[6] == Set([4, 5])
-@assert children[5] == Set([])
+tree_depth, levels, parent, children, siblings = determine_tree_hierarchy(nodeset_acyclic, 1)
+@test tree_depth == 2
+@test Set(levels[1]) == Set([1])
+@test Set(levels[2]) == Set([3, 2, 6])
+@test Set(levels[3]) == Set([4, 5])
+@test isnothing(parent[1])
+@test parent[2] == 1
+@test parent[6] == 1
+@test children[1] == Set([3, 6, 2])
+@test children[6] == Set([4, 5])
+@test children[2] == Set([])
+@test length(siblings) == length(nodeset_acyclic)
+@test siblings[3] == Set([2, 6])
+@test siblings[2] == Set([3, 6])
+@test siblings[6] == Set([2, 3])
+@test siblings[4] == Set([5])
+@test siblings[5] == Set([4])
+@test siblings[1] == Set([])
 
 
-##############################
-# Test: construct TQS matrix #
-##############################
+tree_depth, levels, parent, children, siblings = determine_tree_hierarchy(nodeset_acyclic, 2)
+@test tree_depth == 3
+@test Set(levels[1]) == Set([2])
+@test Set(levels[2]) == Set([1])
+@test Set(levels[3]) == Set([3, 6])
+@test Set(levels[4]) == Set([4, 5])
+@test children[2] == Set([1])
+@test children[1] == Set([3, 6])
+@test children[6] == Set([4, 5])
+@test children[5] == Set([])
+@test length(siblings) == length(nodeset_acyclic)
+@test siblings[3] == Set([6])
+@test siblings[2] == Set([])
+@test siblings[6] == Set([3])
+@test siblings[4] == Set([5])
+@test siblings[5] == Set([4])
+@test siblings[1] == Set([])
+
+#########################
+# Test: TQS matrix type #
+#########################
 
 # recall graph:
 #         3 -- 1 -- 2 
@@ -402,9 +417,39 @@ T56 = T.spinners[5].out[6] * T.spinners[6].inp[5]                    #          
 T66 = T.spinners[6].D    #                6 
 
 
-Tdense = [                                     T11 T12 T13 T14 T15 T16
+Tdense = [                                                                                                              T11 T12 T13 T14 T15 T16
 	T21 T22 T23 T24 T25 T26
 	T31 T32 T33 T34 T35 T36
 	T41 T42 T43 T44 T45 T46
 	T51 T52 T53 T54 T55 T56
 	T61 T62 T63 T64 T65 T66]
+
+
+
+
+####################
+# Test: Stategraph #
+####################
+
+
+# recall again graph:
+#         3 -- 1 -- 2 
+#              |
+#         4 -- 6 -- 5
+
+stategraph = StateGraph{Float64}(T)
+@test all([Set(T.adjecency_list[k]) == Set(keys(stategraph[k])) for k in T.node_ordering])
+@test all([all([T.spinners[k].p_in[v_k] == length(v_v) for (v_k, v_v) in v]) for (k, v) in stategraph])
+
+
+############################################
+# Test: TQS matrix vector and TQS to dense #
+############################################
+
+x = randn(T.N)
+@test T * x ≈ Tdense * x
+
+X = randn(T.N, 30)
+@test T * X ≈ Tdense * X
+
+@test Matrix(T) ≈ Tdense

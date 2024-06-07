@@ -1,25 +1,27 @@
-module TQSMatrices
+# A proof-of-concept preliminary implementation of TQSMatrices
 
+module TQSMatrices
 
 ###########
 # exports #
 ###########
 export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, GIRS_is_tree
 export GIRS_has_no_bounce_back_operators, determine_tree_hierarchy, GraphPartitionedMatrix
-export get_block, get_hankelblock
+export get_block, get_hankelblock, StateGraph
 
 ############
 # packages #
 ############
 using LinearAlgebra
 using IterTools
+using Base.Iterators
 
 ##############
 # ZeroMatrix #
 ##############
 struct ZeroMatrix{Scalar <: Number} <: AbstractMatrix{Scalar}
-	m::UInt
-	n::UInt
+	m::Int
+	n::Int
 end
 ZeroMatrix(m, n) = ZeroMatrix{Float64}(m, n)
 Base.:size(A::ZeroMatrix) = (A.m, A.n)
@@ -35,11 +37,11 @@ Base.:Matrix(A::ZeroMatrix) = zeros(eltype(A), A.m, A.n)
 #################################
 # IndexedVector & IndexedMatrix 
 #################################
-IndexedVector{T <: Any} = Dict{UInt, T}
-IndexedVector{T}(array, labels) where {T <: Any} = Dict{UInt, T}(zip(labels, array))
+IndexedVector{T <: Any} = Dict{Int, T}
+IndexedVector{T}(array, labels) where {T <: Any} = Dict{Int, T}(zip(labels, array))
 struct IndexedMatrix{T <: Any}
 	array::Matrix{T}
-	index_map::Dict{UInt, UInt}
+	index_map::Dict{Int, Int}
 	function IndexedMatrix{T}(array, labels) where {T <: Any}
 		@assert size(array, 1) == size(array, 2)
 		@assert size(array, 1) == length(labels)
@@ -56,17 +58,17 @@ IndexedMatrix(array, labels) = IndexedMatrix{eltype(array)}(array, labels)
 struct GraphPartitionedMatrix{Scalar <: Number}
 	mat::AbstractMatrix
 	# graph attributes
-	nodes::Vector{UInt}
-	K::UInt
-	adjacency_list::IndexedVector{Vector{UInt}}
+	nodes::Vector{Int}
+	K::Int
+	adjacency_list::IndexedVector{Vector{Int}}
 	# mapping between nodes and matrix entries
 	mrange::IndexedVector{UnitRange}
 	nrange::IndexedVector{UnitRange}
 	# dimensions
-	m::IndexedVector{UInt}
-	n::IndexedVector{UInt}
-	M::UInt
-	N::UInt
+	m::IndexedVector{Int}
+	n::IndexedVector{Int}
+	M::Int
+	N::Int
 	function GraphPartitionedMatrix{Scalar}(mat, nodes, m, n, adjacency_list) where {Scalar <: Number}
 		@assert length(m) == length(n) == length(nodes)
 		@assert sum(values(m)) == size(mat, 1)
@@ -85,11 +87,11 @@ struct GraphPartitionedMatrix{Scalar <: Number}
 		N = size(mat, 2)
 
 		# m and n
-		m = IndexedVector{UInt}(m, nodes)
-		n = IndexedVector{UInt}(n, nodes)
+		m = IndexedVector{Int}(m, nodes)
+		n = IndexedVector{Int}(n, nodes)
 
 		# construct mrange
-		mrange = Dict{UInt, UnitRange}()
+		mrange = Dict{Int, UnitRange}()
 		off = 0
 		for node in nodes
 			mrange[node] = (off+1):(off+m[node])
@@ -97,7 +99,7 @@ struct GraphPartitionedMatrix{Scalar <: Number}
 		end
 
 		# construct nrange
-		nrange = Dict{UInt, UnitRange}()
+		nrange = Dict{Int, UnitRange}()
 		off = 0
 		for node in nodes
 			nrange[node] = (off+1):(off+n[node])
@@ -117,7 +119,7 @@ function get_block(A::GraphPartitionedMatrix, i, j)
 	columns = vcat([A.nrange[k] for k in j]...)
 	return A.mat[rows, columns]
 end
-get_block(A::GraphPartitionedMatrix, i::Union{UInt, Vector{UInt}}) = get_block(A, i, i)
+get_block(A::GraphPartitionedMatrix, i::Union{Int, Vector{Int}}) = get_block(A, i, i)
 function get_hankelblock(A::GraphPartitionedMatrix, j)
 	i = filter(x -> !(x in j), A.nodes)
 	return get_block(A, i, j)
@@ -128,16 +130,16 @@ end
 # Spinner #
 ###########
 struct Spinner{Scalar <: Number}
-	id::UInt
-	neighbors::Vector{UInt}
+	id::Int
+	neighbors::Vector{Int}
 	trans::IndexedMatrix{AbstractMatrix{Scalar}}
 	inp::IndexedVector{AbstractMatrix{Scalar}}
 	out::IndexedVector{AbstractMatrix{Scalar}}
 	D::AbstractMatrix{Scalar}
 	m::Int
 	n::Int
-	p_in::IndexedVector{UInt}
-	p_out::IndexedVector{UInt}
+	p_in::IndexedVector{Int}
+	p_out::IndexedVector{Int}
 
 	function Spinner{Scalar}(id, neighbors, trans, inp, out, D) where {Scalar <: Number}
 		# spinners cannot have its own node id as neighbor
@@ -255,7 +257,7 @@ function determine_tree_hierarchy(nodeset, root)
 	not_yet_visited = Dict(node.id => true for node in values(nodeset))
 
 	#breadth first search
-	parent = Dict{UInt, Union{UInt, Nothing}}()
+	parent = Dict{Int, Union{Int, Nothing}}()
 	parent[root] = nothing
 	levels = [[root]]
 	not_yet_visited[root] = false
@@ -279,15 +281,25 @@ function determine_tree_hierarchy(nodeset, root)
 	tree_depth = k - 1
 
 
-	# determine children now...
-	children = Dict{UInt, Set{UInt}}(k => Set([]) for k in keys(nodeset))
+	# determine children
+	children = Dict{Int, Set{Int}}(k => Set([]) for k in keys(nodeset))
 	for k in keys(parent)
 		if !isnothing(parent[k])
 			push!(children[parent[k]], k)
 		end
 	end
 
-	return tree_depth, levels, parent, children
+	# determine siblings
+	siblings = Dict{Int, Set{Int}}(root => Set{Int}([]))
+	for childrenset in values(children)
+		if !isempty(childrenset)
+			for c in childrenset
+				siblings[c] = filter(x -> x != c, childrenset)
+			end
+		end
+	end
+
+	return tree_depth, levels, parent, children, siblings
 end
 
 
@@ -298,19 +310,22 @@ struct TQSMatrix{Scalar <: Number}
 	# spinners
 	spinners::IndexedVector{Spinner{Scalar}}
 	# tree attributes
-	node_ordering::Vector{UInt}
-	K::UInt
-	adjecency_list::IndexedVector{Vector{UInt}}
-	root::UInt
-	levels::Vector{Vector{UInt}}
-	parent::IndexedVector{Union{UInt, Nothing}}
-	children::IndexedVector{Set{UInt}}
-	tree_depth::UInt
+	node_ordering::Vector{Int}
+	K::Int
+	adjecency_list::IndexedVector{Vector{Int}}
+	root::Int
+	levels::Vector{Vector{Int}}
+	parent::IndexedVector{Union{Int, Nothing}}
+	children::IndexedVector{Set{Int}}
+	siblings::IndexedVector{Set{Int}}
+	tree_depth::Int
 	# dimensions
-	m::IndexedVector{UInt}
-	n::IndexedVector{UInt}
-	M::UInt
-	N::UInt
+	m::IndexedVector{Int}
+	n::IndexedVector{Int}
+	mrange::IndexedVector{UnitRange}
+	nrange::IndexedVector{UnitRange}
+	M::Int
+	N::Int
 
 	function TQSMatrix{Scalar}(spinners, node_ordering, root) where {Scalar <: Number}
 
@@ -329,13 +344,28 @@ struct TQSMatrix{Scalar <: Number}
 		# construct
 		K = length(node_ordering)
 		adjecency_list = Dict(s.id => s.neighbors for s in values(spinners))
-		tree_depth, levels, parent, children = determine_tree_hierarchy(spinners, root)
+		tree_depth, levels, parent, children, siblings = determine_tree_hierarchy(spinners, root)
 		m = Dict(s.id => s.m for s in values(spinners))
 		n = Dict(s.id => s.n for s in values(spinners))
+		# construct mrange
+		mrange = Dict{Int, UnitRange}()
+		off = 0
+		for node in node_ordering
+			mrange[node] = (off+1):(off+m[node])
+			off = off + m[node]
+		end
+		# construct nrange
+		nrange = Dict{Int, UnitRange}()
+		off = 0
+		for node in node_ordering
+			nrange[node] = (off+1):(off+n[node])
+			off = off + n[node]
+		end
 		M = sum(values(m))
 		N = sum(values(n))
+
 		new{Scalar}(spinners, node_ordering, K, adjecency_list, root, levels, parent,
-			children, tree_depth, m, n, M, N)
+			children, siblings, tree_depth, m, n, mrange, nrange, M, N)
 	end
 end
 function TQSMatrix(spinners, node_ordering, root)
@@ -343,22 +373,85 @@ function TQSMatrix(spinners, node_ordering, root)
 	T = eltype(spinners[1])
 	return TQSMatrix{T}(spinners, node_ordering, root)
 end
+Base.eltype(T::TQSMatrix) = typeof(T).parameters[1]
 Base.:size(T::TQSMatrix) = (T.M, T.N)
-function Base.:Matrix(T::TQSMatrix)
-	return 0
+
+
+##############################
+# TQS matrix vector multiply #
+##############################
+StateGraph{Scalar <: Number} = Dict{Int, Dict{Int, Vector{Scalar}}}
+function StateGraph{Scalar}(T::TQSMatrix) where Scalar <: Number
+	# creates a skeleton Stategraph with undefined entries
+	stategraph = StateGraph{Scalar}()
+	for (node, neighbors) in T.adjecency_list
+		stategraph[node] = Dict(neighbor => zeros(Scalar, T.spinners[node].p_in[neighbor]) for neighbor in neighbors)
+	end
+	return stategraph
 end
 
 ##############################
 # TQS matrix vector multiply #
 ##############################
 
+function Base.:*(T::TQSMatrix, x::Vector)
+
+	#check input correctness
+	@assert T.N == length(x)
+
+	# pre-allocate memory
+	type_b = promote_type(eltype(T), eltype(x))
+	b = Vector{type_b}(undef, T.M)
+	h = StateGraph{type_b}(T)
+
+	# diagonal phase
+	for node in eachindex(T.node_ordering)
+		b[T.mrange[node]] = T.spinners[node].D * x[T.nrange[node]]
+	end
+
+	# Upsweep stage: from leaves to the root
+	for l in length(T.levels):-1:2
+		for i in T.levels[l]
+			j = T.parent[i]
+			h[j][i] += T.spinners[i].inp[j] * x[T.nrange[i]]   #input contribution
+			for w in T.children[i]                             #children state contribution
+				h[j][i] += T.spinners[i].trans[j, w] * h[i][w]
+			end
+			b[T.mrange[j]] += T.spinners[j].out[i] * h[j][i]
+		end
+	end
+
+	# Downsweep stage: from root to the leaves
+	for l in 2:length(T.levels)
+		for i in T.levels[l]
+			j = T.parent[i]
+			h[i][j] += T.spinners[j].inp[i] * x[T.nrange[j]]    # input contribution
+			for s in T.siblings[i]                              # sibling contribution
+				h[i][j] += T.spinners[j].trans[i, s] * h[j][s]
+			end
+			k = T.parent[j]
+			if !isnothing(k)
+				h[i][j] += T.spinners[j].trans[i, k] * h[j][k]  # grandparent contribution
+			end
+			b[T.mrange[i]] += T.spinners[i].out[j] * h[i][j]
+		end
+	end
+
+	return b
+end
+
+function Base.:*(T::TQSMatrix, X::AbstractMatrix)
+	return mapslices(x -> T * x, X; dims = 1)
+end
 
 
 #######################
 # TQS to dense matrix #
 #######################
 
-
+function Base.:Matrix(T::TQSMatrix)
+	return T * Matrix{eltype(T)}(I, T.N, T.N)
+end
 
 ####################
 # TQS construction #
