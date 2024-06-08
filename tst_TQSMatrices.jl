@@ -461,7 +461,7 @@ T66 = T.spinners[6].D    #                6
 
 
 Tdense =
-	[                                                                                                                                                                 T11 T12 T13 T14 T15 T16
+	[                                                                                                                                      T11 T12 T13 T14 T15 T16
 		T21 T22 T23 T24 T25 T26
 		T31 T32 T33 T34 T35 T36
 		T41 T42 T43 T44 T45 T46
@@ -498,5 +498,4 @@ X = randn(T.N, 30)
 
 @test Matrix(T) ≈ Tdense
 
-
-
+[true for i in 1:5, j in 1:6]

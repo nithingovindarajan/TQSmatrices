@@ -51,10 +51,11 @@ struct IndexedMatrix{T <: Any}
 	array::Matrix{T}
 	labels::Vector{Int}
 	index_map::Dict{Int, Int}
+	N::Int
 	function IndexedMatrix{T}(array, labels) where {T <: Any}
 		@assert size(array, 1) == size(array, 2)
 		@assert size(array, 1) == length(labels)
-		new{T}(convert(Matrix{T}, array), labels, Dict(label => i for (i, label) in enumerate(labels)))
+		new{T}(convert(Matrix{T}, array), labels, Dict(label => i for (i, label) in enumerate(labels)), size(array, 1)::Int)
 	end
 end
 Base.:getindex(A::IndexedMatrix, i, j) = A.array[A.index_map[i], A.index_map[j]]
@@ -64,7 +65,8 @@ end
 function IndexedMatrix{T}(A::IndexedMatrix) where T <: Any     # to recast into different type parameter
 	return IndexedMatrix{T}(A.array, A.labels)
 end
-
+Base.:size(A::IndexedMatrix) = (N, N)
+Base.:size(A::IndexedMatrix, i) = size(A)[i]
 
 ############################
 # Graph Partitioned matrix #
@@ -193,29 +195,38 @@ Base.:size(S::Spinner) = (S.m, S.n)
 IndexedVector{Spinner}(S) = Dict(s.id => s for s in S)
 Base.eltype(x::Spinner) = typeof(x).parameters[1]
 
-# function Spinner{Scalar}(id, neighbors,
-# 	trans::IndexedMatrix{Scalar}, inp::IndexedMatrix{Scalar},
-# 	out::IndexedMatrix{Scalar}, D::IndexedMatrix{Scalar}) where {Scalar <: Number}
-# 	# spinners cannot have its own node id as neighbor
-# 	@assert all(x -> x != id, neighbors)
-# 	# neighbor list is unique
-# 	@assert length(Set(neighbors)) == length(neighbors)
-# 	# dimensionality checks
-# 	@assert length(neighbors) == size(trans, 1)
-# 	@assert size(trans, 1) == size(trans, 2)
-# 	@assert length(inp) == size(trans, 1)
-# 	@assert length(out) == size(trans, 1)
-# 	# operator dimension checks
-# 	@assert all([size(el, 1) == size(D, 1) for el in out])
-# 	@assert all([size(el, 2) == size(D, 2) for el in inp])
-# 	for iter in eachindex(inp)
-# 		@assert all([size(el, 1) == size(inp[iter], 1) for el in trans[iter, :]])
-# 	end
-# 	for iter in eachindex(out)
-# 		@assert all([size(el, 2) == size(out[iter], 2) for el in trans[:, iter]])
-# 	end
+function Spinner{Scalar}(id::Int,
+	neighbors::Vector{Int},
+	trans::IndexedMatrix{Scalar},
+	inp::IndexedMatrix{Scalar},
+	out::IndexedMatrix{Scalar},
+	D::IndexedMatrix{Scalar},
+	m::Int,
+	n::Int,
+	p_in::IndexedVector{Int},
+	p_out::IndexedVector{Int})
 
-# end
+	# spinners cannot have its own node id as neighbor
+	@assert all(x -> x != id, neighbors)
+	# neighbor list is unique
+	@assert length(Set(neighbors)) == length(neighbors)
+	# trans, inp, and out, p_in, p_out have correct labels
+	@assert trans.labels == neighbors
+	@assert Set(keys(inp)) == neighbors
+	@assert Set(keys(out)) == neighbors
+	@assert Set(keys(p_in)) == neighbors
+	@assert Set(keys(p_out)) == neighbors
+	# dimensions of D coincide with m and n
+	@assert size(D) == (m, n)
+	# operator dimension checks
+	@assert all([size(out[k]) == (m, p_in[k]) for k in keys(out)])
+	@assert all([size(inp[k]) == (p_out[k], n) for k in keys(inp)])
+	@assert all([size(trans[k, l]) == (p_in[k], p_out[l]) for k in neighbors, l in neighbors])
+
+	new{Scalar}(
+		neighbors, trans, inp, out, D, m, n, p_in, p_out,
+	)
+end
 
 
 #########################################################################
