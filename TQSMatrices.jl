@@ -1,11 +1,10 @@
 # A proof-of-concept preliminary implementation of TQSMatrices
-
 module TQSMatrices
 
 ###########
 # exports #
 ###########
-export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, GIRS_is_tree
+export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, IndexedMatrix, GIRS_is_tree
 export GIRS_has_no_bounce_back_operators, determine_tree_hierarchy, GraphPartitionedMatrix
 export get_block, get_hankelblock, StateGraph
 
@@ -34,22 +33,37 @@ function Base.:getindex(A::ZeroMatrix, i::Int, j::Int)
 end
 Base.:Matrix(A::ZeroMatrix) = zeros(eltype(A), A.m, A.n)
 
-#################################
-# IndexedVector & IndexedMatrix 
-#################################
+#################
+# IndexedVector #
+#################
+
 IndexedVector{T <: Any} = Dict{Int, T}
 IndexedVector{T}(array, labels) where {T <: Any} = Dict{Int, T}(zip(labels, array))
+function IndexedVector{T}(v::IndexedVector) where {T <: Any}
+	return Dict{Int, T}(key => val for (key, val) in v)
+end
+
+#################
+# IndexedMatrix #
+#################
+
 struct IndexedMatrix{T <: Any}
 	array::Matrix{T}
+	labels::Vector{Int}
 	index_map::Dict{Int, Int}
 	function IndexedMatrix{T}(array, labels) where {T <: Any}
 		@assert size(array, 1) == size(array, 2)
 		@assert size(array, 1) == length(labels)
-		new{T}(convert(Matrix{T}, array), Dict(label => i for (i, label) in enumerate(labels)))
+		new{T}(convert(Matrix{T}, array), labels, Dict(label => i for (i, label) in enumerate(labels)))
 	end
 end
 Base.:getindex(A::IndexedMatrix, i, j) = A.array[A.index_map[i], A.index_map[j]]
-IndexedMatrix(array, labels) = IndexedMatrix{eltype(array)}(array, labels)
+function Base.:setindex!(A::IndexedMatrix, val, i, j)
+	A.array[A.index_map[i], A.index_map[j]] = val
+end
+function IndexedMatrix{T}(A::IndexedMatrix) where T <: Any     # to recast into different type parameter
+	return IndexedMatrix{T}(A.array, A.labels)
+end
 
 
 ############################
@@ -179,6 +193,29 @@ Base.:size(S::Spinner) = (S.m, S.n)
 IndexedVector{Spinner}(S) = Dict(s.id => s for s in S)
 Base.eltype(x::Spinner) = typeof(x).parameters[1]
 
+# function Spinner{Scalar}(id, neighbors,
+# 	trans::IndexedMatrix{Scalar}, inp::IndexedMatrix{Scalar},
+# 	out::IndexedMatrix{Scalar}, D::IndexedMatrix{Scalar}) where {Scalar <: Number}
+# 	# spinners cannot have its own node id as neighbor
+# 	@assert all(x -> x != id, neighbors)
+# 	# neighbor list is unique
+# 	@assert length(Set(neighbors)) == length(neighbors)
+# 	# dimensionality checks
+# 	@assert length(neighbors) == size(trans, 1)
+# 	@assert size(trans, 1) == size(trans, 2)
+# 	@assert length(inp) == size(trans, 1)
+# 	@assert length(out) == size(trans, 1)
+# 	# operator dimension checks
+# 	@assert all([size(el, 1) == size(D, 1) for el in out])
+# 	@assert all([size(el, 2) == size(D, 2) for el in inp])
+# 	for iter in eachindex(inp)
+# 		@assert all([size(el, 1) == size(inp[iter], 1) for el in trans[iter, :]])
+# 	end
+# 	for iter in eachindex(out)
+# 		@assert all([size(el, 2) == size(out[iter], 2) for el in trans[:, iter]])
+# 	end
+
+# end
 
 
 #########################################################################
@@ -457,6 +494,10 @@ end
 # TQS construction #
 ####################
 
+
+function TQSMatrix(T::GraphPartitionedMatrix, tol = 1E-15, r_bound = Inf)
+
+end
 
 #############
 # TQS solve #

@@ -4,6 +4,49 @@ using LinearAlgebra
 using Test
 
 
+#######################
+# Test: IndexedVector #
+#######################
+
+neighbors = [4, 5, 6]
+inp = [rand(4, 2),
+	rand(4, 2),
+	nothing];
+inp_indexed = IndexedVector{Union{Nothing, AbstractMatrix{Float64}}}(inp, neighbors)
+B = rand(4, 2)
+inp_indexed[6] = B[:, :]
+B[1, 1] = 4
+@test B[1, 1] != inp_indexed[6][1, 1]
+@test typeof(IndexedVector{AbstractMatrix{Float64}}(inp_indexed)) == IndexedVector{AbstractMatrix{Float64}}
+
+
+#######################
+# Test: IndexedMatrix #
+#######################
+
+neighbors = [4, 5, 6]
+trans = Matrix(undef, 3, 3);
+trans[1, 1], trans[1, 2], trans[1, 3] = nothing, rand(3, 3), rand(3, 3);
+trans[2, 1], trans[2, 2], trans[2, 3] = rand(3, 3), ZeroMatrix(3, 3), rand(3, 3);
+trans[3, 1], trans[3, 2], trans[3, 3] = rand(3, 3), rand(3, 3), ZeroMatrix(3, 3);
+
+trans_indexed = IndexedMatrix{Union{AbstractMatrix{Float64}, Nothing}}(trans, neighbors)
+@test typeof(trans_indexed) == IndexedMatrix{Union{AbstractMatrix{Float64}, Nothing}}
+
+# check if we can modify entries
+B = rand(3, 3)
+trans_indexed[4, 5] = B[:, :]
+@test trans_indexed[4, 5] == B
+B[1, 1] = 4
+@test trans_indexed[4, 5][1, 1] != B[1, 1]
+
+# fill-in unfilled entry
+trans_indexed[4, 4] = rand(3, 3)
+# "recast" into an indexedmatrix with type parameter AbstractMatrix{Float64} (so no union with Nothing)
+@test typeof(IndexedMatrix{AbstractMatrix{Float64}}(trans_indexed)) == IndexedMatrix{AbstractMatrix{Float64}}
+
+
+
 #################################################
 # Test: constructing graph partitioned matrices #
 #################################################
@@ -417,12 +460,13 @@ T56 = T.spinners[5].out[6] * T.spinners[6].inp[5]                    #          
 T66 = T.spinners[6].D    #                6 
 
 
-Tdense = [                                                                                                              T11 T12 T13 T14 T15 T16
-	T21 T22 T23 T24 T25 T26
-	T31 T32 T33 T34 T35 T36
-	T41 T42 T43 T44 T45 T46
-	T51 T52 T53 T54 T55 T56
-	T61 T62 T63 T64 T65 T66]
+Tdense =
+	[                                                                                                                                                                 T11 T12 T13 T14 T15 T16
+		T21 T22 T23 T24 T25 T26
+		T31 T32 T33 T34 T35 T36
+		T41 T42 T43 T44 T45 T46
+		T51 T52 T53 T54 T55 T56
+		T61 T62 T63 T64 T65 T66]
 
 
 
@@ -453,3 +497,6 @@ X = randn(T.N, 30)
 @test T * X ≈ Tdense * X
 
 @test Matrix(T) ≈ Tdense
+
+
+
