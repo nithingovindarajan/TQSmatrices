@@ -19,6 +19,8 @@ B[1, 1] = 4
 @test B[1, 1] != inp_indexed[6][1, 1]
 @test typeof(IndexedVector{AbstractMatrix{Float64}}(inp_indexed)) == IndexedVector{AbstractMatrix{Float64}}
 
+size(rand(4, 2))
+
 
 #######################
 # Test: IndexedMatrix #
@@ -44,6 +46,9 @@ B[1, 1] = 4
 trans_indexed[4, 4] = rand(3, 3)
 # "recast" into an indexedmatrix with type parameter AbstractMatrix{Float64} (so no union with Nothing)
 @test typeof(IndexedMatrix{AbstractMatrix{Float64}}(trans_indexed)) == IndexedMatrix{AbstractMatrix{Float64}}
+
+# create an undefined IndexedMatrix
+IndexedMatrix{Matrix{Float64}}(neighbors)
 
 
 
@@ -89,6 +94,9 @@ nodeset_out = rand(nodes, 2)
 nodeset_in = [2 3]
 nodeset_out = [1, 4, 5]
 @test get_hankelblock(A, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+
+# create a TransGraph
+TransGraph{Float64}(A)
 
 ####################################
 # Test: construct spinner matrices #
@@ -357,6 +365,14 @@ nodeset_cyclic = IndexedVector{Spinner}([node1, node2, node3, node4, node5])
 @test GIRS_has_no_bounce_back_operators(nodeset_acyclic)
 @test !GIRS_has_no_bounce_back_operators(nodeset_cyclic)
 
+#######################################
+# Test: Checking if a graph is a tree #
+#######################################
+adj_list_nodeset_acyclic = Dict(s.id => s.neighbors for s in values(nodeset_acyclic))
+adj_list_nodeset_cyclic = Dict(s.id => s.neighbors for s in values(nodeset_cyclic))
+@test is_a_tree(adj_list_nodeset_acyclic)
+@test !is_a_tree(adj_list_nodeset_cyclic)
+
 ##################################
 # Test: determine tree hierarchy #
 ##################################
@@ -366,43 +382,57 @@ nodeset_cyclic = IndexedVector{Spinner}([node1, node2, node3, node4, node5])
 #              |
 #         4 -- 6 -- 5
 
-tree_depth, levels, parent, children, siblings = determine_tree_hierarchy(nodeset_acyclic, 1)
-@test tree_depth == 2
-@test Set(levels[1]) == Set([1])
-@test Set(levels[2]) == Set([3, 2, 6])
-@test Set(levels[3]) == Set([4, 5])
-@test isnothing(parent[1])
-@test parent[2] == 1
-@test parent[6] == 1
-@test children[1] == Set([3, 6, 2])
-@test children[6] == Set([4, 5])
-@test children[2] == Set([])
-@test length(siblings) == length(nodeset_acyclic)
-@test siblings[3] == Set([2, 6])
-@test siblings[2] == Set([3, 6])
-@test siblings[6] == Set([2, 3])
-@test siblings[4] == Set([5])
-@test siblings[5] == Set([4])
-@test siblings[1] == Set([])
+tree = construct_tree(adj_list_nodeset_acyclic, 1)
+@test tree.tree_depth == 2
+@test Set(tree.levels[1]) == Set([1])
+@test Set(tree.levels[2]) == Set([3, 2, 6])
+@test Set(tree.levels[3]) == Set([4, 5])
+@test isnothing(tree.parent[1])
+@test tree.parent[2] == 1
+@test tree.parent[6] == 1
+@test tree.children[1] == Set([3, 6, 2])
+@test tree.children[6] == Set([4, 5])
+@test tree.children[2] == Set([])
+@test length(tree.siblings) == length(nodeset_acyclic)
+@test tree.siblings[3] == Set([2, 6])
+@test tree.siblings[2] == Set([3, 6])
+@test tree.siblings[6] == Set([2, 3])
+@test tree.siblings[4] == Set([5])
+@test tree.siblings[5] == Set([4])
+@test tree.siblings[1] == Set([])
+
+@test tree.descendants[1] == Set([1, 2, 3, 4, 5, 6])
+@test tree.descendants[2] == Set([2])
+@test tree.descendants[3] == Set([3])
+@test tree.descendants[4] == Set([4])
+@test tree.descendants[5] == Set([5])
+@test tree.descendants[6] == Set([6, 4, 5])
+
+@test tree.descendants_complement[1] == Set([])
+@test tree.descendants_complement[2] == Set([1, 3, 4, 5, 6])
+@test tree.descendants_complement[3] == Set([1, 2, 4, 5, 6])
+@test tree.descendants_complement[4] == Set([1, 3, 2, 5, 6])
+@test tree.descendants_complement[5] == Set([1, 3, 4, 2, 6])
+@test tree.descendants_complement[6] == Set([1, 2, 3])
 
 
-tree_depth, levels, parent, children, siblings = determine_tree_hierarchy(nodeset_acyclic, 2)
-@test tree_depth == 3
-@test Set(levels[1]) == Set([2])
-@test Set(levels[2]) == Set([1])
-@test Set(levels[3]) == Set([3, 6])
-@test Set(levels[4]) == Set([4, 5])
-@test children[2] == Set([1])
-@test children[1] == Set([3, 6])
-@test children[6] == Set([4, 5])
-@test children[5] == Set([])
-@test length(siblings) == length(nodeset_acyclic)
-@test siblings[3] == Set([6])
-@test siblings[2] == Set([])
-@test siblings[6] == Set([3])
-@test siblings[4] == Set([5])
-@test siblings[5] == Set([4])
-@test siblings[1] == Set([])
+tree = construct_tree(adj_list_nodeset_acyclic, 2)
+@test tree.tree_depth == 3
+@test Set(tree.levels[1]) == Set([2])
+@test Set(tree.levels[2]) == Set([1])
+@test Set(tree.levels[3]) == Set([3, 6])
+@test Set(tree.levels[4]) == Set([4, 5])
+@test tree.children[2] == Set([1])
+@test tree.children[1] == Set([3, 6])
+@test tree.children[6] == Set([4, 5])
+@test tree.children[5] == Set([])
+@test length(tree.siblings) == length(nodeset_acyclic)
+@test tree.siblings[3] == Set([6])
+@test tree.siblings[2] == Set([])
+@test tree.siblings[6] == Set([3])
+@test tree.siblings[4] == Set([5])
+@test tree.siblings[5] == Set([4])
+@test tree.siblings[1] == Set([])
 
 #########################
 # Test: TQS matrix type #
@@ -461,7 +491,7 @@ T66 = T.spinners[6].D    #                6
 
 
 Tdense =
-	[                                                                                                                                      T11 T12 T13 T14 T15 T16
+	[                                                                       T11 T12 T13 T14 T15 T16
 		T21 T22 T23 T24 T25 T26
 		T31 T32 T33 T34 T35 T36
 		T41 T42 T43 T44 T45 T46
@@ -491,11 +521,16 @@ stategraph = StateGraph{Float64}(T)
 ############################################
 
 x = randn(T.N)
-@test T * x ≈ Tdense * x
+@test *(T, x, tree) ≈ Tdense * x
 
 X = randn(T.N, 30)
-@test T * X ≈ Tdense * X
+@test *(T, X, tree) ≈ Tdense * X
 
-@test Matrix(T) ≈ Tdense
+@test Matrix(T,tree) ≈ Tdense
 
 [true for i in 1:5, j in 1:6]
+
+
+
+
+

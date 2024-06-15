@@ -1,12 +1,12 @@
-# A proof-of-concept preliminary implementation of TQSMatrices
+# A "proof-of-concept" preliminary implementation of TQSMatrices
 module TQSMatrices
 
 ###########
 # exports #
 ###########
-export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, IndexedMatrix, GIRS_is_tree
-export GIRS_has_no_bounce_back_operators, determine_tree_hierarchy, GraphPartitionedMatrix
-export get_block, get_hankelblock, StateGraph
+export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, IndexedMatrix, is_a_tree
+export GIRS_has_no_bounce_back_operators, construct_tree, GraphPartitionedMatrix
+export get_block, get_hankelblock, StateGraph, TransGraph
 
 ############
 # packages #
@@ -65,7 +65,11 @@ end
 function IndexedMatrix{T}(A::IndexedMatrix) where T <: Any     # to recast into different type parameter
 	return IndexedMatrix{T}(A.array, A.labels)
 end
-Base.:size(A::IndexedMatrix) = (N, N)
+function IndexedMatrix{T}(labels::Vector{Int}) where {T <: Any} # creates an undefined IndexedMatrix
+	N = length(labels)
+	return IndexedMatrix{T}(Array{Matrix{Float64}}(undef, N, N), labels)
+end
+Base.:size(A::IndexedMatrix) = (A.N, A.N)
 Base.:size(A::IndexedMatrix, i) = size(A)[i]
 
 ############################
@@ -157,77 +161,60 @@ struct Spinner{Scalar <: Number}
 	p_in::IndexedVector{Int}
 	p_out::IndexedVector{Int}
 
-	function Spinner{Scalar}(id, neighbors, trans, inp, out, D) where {Scalar <: Number}
+	function Spinner{Scalar}(id::Int,
+		neighbors::Vector{Int},
+		trans::IndexedMatrix{AbstractMatrix{Scalar}},
+		inp::IndexedVector{AbstractMatrix{Scalar}},
+		out::IndexedVector{AbstractMatrix{Scalar}},
+		D::AbstractMatrix{Scalar},
+		m::Int,
+		n::Int,
+		p_in::IndexedVector{Int},
+		p_out::IndexedVector{Int}) where {Scalar <: Number}
+
 		# spinners cannot have its own node id as neighbor
 		@assert all(x -> x != id, neighbors)
 		# neighbor list is unique
 		@assert length(Set(neighbors)) == length(neighbors)
-		# dimensionality checks
-		@assert length(neighbors) == size(trans, 1)
-		@assert size(trans, 1) == size(trans, 2)
-		@assert length(inp) == size(trans, 1)
-		@assert length(out) == size(trans, 1)
+		# trans, inp, and out, p_in, p_out have correct labels
+		@assert trans.labels == neighbors
+		@assert Set(keys(inp)) == Set(neighbors)
+		@assert Set(keys(out)) == Set(neighbors)
+		@assert Set(keys(p_in)) == Set(neighbors)
+		@assert Set(keys(p_out)) == Set(neighbors)
+		# dimensions of D coincide with m and n
+		@assert size(D) == (m, n)
 		# operator dimension checks
-		@assert all([size(el, 1) == size(D, 1) for el in out])
-		@assert all([size(el, 2) == size(D, 2) for el in inp])
-		for iter in eachindex(inp)
-			@assert all([size(el, 1) == size(inp[iter], 1) for el in trans[iter, :]])
-		end
-		for iter in eachindex(out)
-			@assert all([size(el, 2) == size(out[iter], 2) for el in trans[:, iter]])
-		end
-		# construct
+		@assert all([size(out[k]) == (m, p_in[k]) for k in keys(out)])
+		@assert all([size(inp[k]) == (p_out[k], n) for k in keys(inp)])
+		@assert all([size(trans[k, l]) == (p_out[k], p_in[l]) for k in neighbors, l in neighbors])
+
 		new{Scalar}(
-			id,
-			neighbors,
-			IndexedMatrix{AbstractMatrix{Scalar}}(trans, neighbors),
-			IndexedVector{AbstractMatrix{Scalar}}(inp, neighbors),
-			IndexedVector{AbstractMatrix{Scalar}}(out, neighbors),
-			convert(AbstractMatrix{Scalar}, D),
-			size(D, 1),
-			size(D, 2),
-			Dict(j => size(c, 2) for (j, c) in zip(neighbors, out)),
-			Dict(j => size(b, 1) for (j, b) in zip(neighbors, inp)),
+			id, neighbors, trans, inp, out, D, m, n, p_in, p_out,
 		)
 	end
+
 end
 Base.:size(S::Spinner) = (S.m, S.n)
 IndexedVector{Spinner}(S) = Dict(s.id => s for s in S)
 Base.eltype(x::Spinner) = typeof(x).parameters[1]
 
-function Spinner{Scalar}(id::Int,
-	neighbors::Vector{Int},
-	trans::IndexedMatrix{Scalar},
-	inp::IndexedMatrix{Scalar},
-	out::IndexedMatrix{Scalar},
-	D::IndexedMatrix{Scalar},
-	m::Int,
-	n::Int,
-	p_in::IndexedVector{Int},
-	p_out::IndexedVector{Int})
 
-	# spinners cannot have its own node id as neighbor
-	@assert all(x -> x != id, neighbors)
-	# neighbor list is unique
-	@assert length(Set(neighbors)) == length(neighbors)
-	# trans, inp, and out, p_in, p_out have correct labels
-	@assert trans.labels == neighbors
-	@assert Set(keys(inp)) == neighbors
-	@assert Set(keys(out)) == neighbors
-	@assert Set(keys(p_in)) == neighbors
-	@assert Set(keys(p_out)) == neighbors
-	# dimensions of D coincide with m and n
-	@assert size(D) == (m, n)
-	# operator dimension checks
-	@assert all([size(out[k]) == (m, p_in[k]) for k in keys(out)])
-	@assert all([size(inp[k]) == (p_out[k], n) for k in keys(inp)])
-	@assert all([size(trans[k, l]) == (p_in[k], p_out[l]) for k in neighbors, l in neighbors])
 
-	new{Scalar}(
-		neighbors, trans, inp, out, D, m, n, p_in, p_out,
+function Spinner{Scalar}(id, neighbors, trans, inp, out, D) where {Scalar <: Number}
+	return Spinner{Scalar}(
+		id,
+		neighbors,
+		IndexedMatrix{AbstractMatrix{Scalar}}(trans, neighbors),
+		IndexedVector{AbstractMatrix{Scalar}}(inp, neighbors),
+		IndexedVector{AbstractMatrix{Scalar}}(out, neighbors),
+		convert(AbstractMatrix{Scalar}, D),
+		size(D, 1),
+		size(D, 2),
+		Dict(j => size(c, 2) for (j, c) in zip(neighbors, out)),
+		Dict(j => size(b, 1) for (j, b) in zip(neighbors, inp)),
 	)
 end
-
 
 #########################################################################
 # Check if vector of spinners is a valid (infinite) GIRS representation #
@@ -250,14 +237,13 @@ end
 # Check if vector of spinners is a tree #
 #########################################
 
-function GIRS_is_tree(nodeset)
+function is_a_tree(adj_list)
 	# for an indirect graph to be a tree:
 	# 1. no cycles
 	# 2. fully connected
 
-	adj_list = Dict(node.id => node.neighbors for node in values(nodeset))
-	visited = Dict(node.id => false for node in values(nodeset))
-	start_node = first(keys(nodeset))
+	visited = Dict(node => false for node in keys(adj_list))
+	start_node = first(keys(adj_list))
 
 	# depth first search
 	stack = [(start_node, -1)]
@@ -297,12 +283,23 @@ end
 # Determine tree levels #
 #########################
 
-function determine_tree_hierarchy(nodeset, root)
+struct Tree
+	adjecency_list::IndexedVector{Vector{Int}}
+	root::Int
+	tree_depth::Int
+	levels::Vector{Vector{Int}}
+	parent::IndexedVector{Union{Int, Nothing}}
+	children::IndexedVector{Set{Int}}
+	siblings::IndexedVector{Set{Int}}
+	descendants::IndexedVector{Set{Int}}
+	descendants_complement::IndexedVector{Set{Int}}
+end
+
+function construct_tree(adj_list, root)
 	# function assumes nodeset is a tree. Run first GIRS_is_tree
 
-	@assert haskey(nodeset, root)
-	adj_list = Dict(node.id => node.neighbors for node in values(nodeset))
-	not_yet_visited = Dict(node.id => true for node in values(nodeset))
+	@assert haskey(adj_list, root)
+	not_yet_visited = Dict(node => true for node in keys(adj_list))
 
 	#breadth first search
 	parent = Dict{Int, Union{Int, Nothing}}()
@@ -330,7 +327,7 @@ function determine_tree_hierarchy(nodeset, root)
 
 
 	# determine children
-	children = Dict{Int, Set{Int}}(k => Set([]) for k in keys(nodeset))
+	children = Dict{Int, Set{Int}}(k => Set([]) for k in keys(adj_list))
 	for k in keys(parent)
 		if !isnothing(parent[k])
 			push!(children[parent[k]], k)
@@ -347,8 +344,27 @@ function determine_tree_hierarchy(nodeset, root)
 		end
 	end
 
-	return tree_depth, levels, parent, children, siblings
+	# determine descendant and descendants complement
+	descendants = Dict{Int, Set{Int}}(k => Set([k]) for k in keys(adj_list))
+	for k in keys(descendants)
+		function recursively_add_children!(x)
+			if !isempty(children[x])
+				for l in children[x]
+					push!(descendants[k], l)
+					recursively_add_children!(l)
+				end
+			end
+		end
+		recursively_add_children!(k)
+	end
+	nodes = keys(adj_list)
+	descendants_complement = Dict{Int, Set{Int}}(k => setdiff(nodes, descendants[k]) for k in nodes)
+
+	return Tree(adj_list, root, tree_depth, levels, parent, children, siblings, descendants, descendants_complement)
 end
+construct_tree(T::GraphPartitionedMatrix, root) = construct_tree(T.adjecency_list, root)
+
+
 
 
 ################
@@ -357,16 +373,10 @@ end
 struct TQSMatrix{Scalar <: Number}
 	# spinners
 	spinners::IndexedVector{Spinner{Scalar}}
-	# tree attributes
+	# graph attributes
 	node_ordering::Vector{Int}
 	K::Int
 	adjecency_list::IndexedVector{Vector{Int}}
-	root::Int
-	levels::Vector{Vector{Int}}
-	parent::IndexedVector{Union{Int, Nothing}}
-	children::IndexedVector{Set{Int}}
-	siblings::IndexedVector{Set{Int}}
-	tree_depth::Int
 	# dimensions
 	m::IndexedVector{Int}
 	n::IndexedVector{Int}
@@ -386,23 +396,19 @@ struct TQSMatrix{Scalar <: Number}
 
 		# checks spinners generate a valid TQS matrix
 		@assert GIRS_is_consistent(spinners)
-		@assert GIRS_is_tree(spinners)
 		@assert GIRS_has_no_bounce_back_operators(spinners)
-
-		# construct
-		K = length(node_ordering)
 		adjecency_list = Dict(s.id => s.neighbors for s in values(spinners))
-		tree_depth, levels, parent, children, siblings = determine_tree_hierarchy(spinners, root)
+		@assert is_a_tree(adjecency_list)
+
+		K = length(node_ordering)
 		m = Dict(s.id => s.m for s in values(spinners))
 		n = Dict(s.id => s.n for s in values(spinners))
-		# construct mrange
 		mrange = Dict{Int, UnitRange}()
 		off = 0
 		for node in node_ordering
 			mrange[node] = (off+1):(off+m[node])
 			off = off + m[node]
 		end
-		# construct nrange
 		nrange = Dict{Int, UnitRange}()
 		off = 0
 		for node in node_ordering
@@ -412,8 +418,7 @@ struct TQSMatrix{Scalar <: Number}
 		M = sum(values(m))
 		N = sum(values(n))
 
-		new{Scalar}(spinners, node_ordering, K, adjecency_list, root, levels, parent,
-			children, siblings, tree_depth, m, n, mrange, nrange, M, N)
+		new{Scalar}(spinners, node_ordering, K, adjecency_list, m, n, mrange, nrange, M, N)
 	end
 end
 function TQSMatrix(spinners, node_ordering, root)
@@ -423,14 +428,14 @@ function TQSMatrix(spinners, node_ordering, root)
 end
 Base.eltype(T::TQSMatrix) = typeof(T).parameters[1]
 Base.:size(T::TQSMatrix) = (T.M, T.N)
-
+construct_tree(T::TQSMatrix, root) = construct_tree(T.adjecency_list, root)
 
 ##############################
 # TQS matrix vector multiply #
 ##############################
 StateGraph{Scalar <: Number} = Dict{Int, Dict{Int, Vector{Scalar}}}
 function StateGraph{Scalar}(T::TQSMatrix) where Scalar <: Number
-	# creates a skeleton Stategraph with undefined entries
+	# creates a Stategraph with zero entries
 	stategraph = StateGraph{Scalar}()
 	for (node, neighbors) in T.adjecency_list
 		stategraph[node] = Dict(neighbor => zeros(Scalar, T.spinners[node].p_in[neighbor]) for neighbor in neighbors)
@@ -438,11 +443,8 @@ function StateGraph{Scalar}(T::TQSMatrix) where Scalar <: Number
 	return stategraph
 end
 
-##############################
-# TQS matrix vector multiply #
-##############################
 
-function Base.:*(T::TQSMatrix, x::Vector)
+function Base.:*(T::TQSMatrix, x::Vector, tree::Tree)
 
 	#check input correctness
 	@assert T.N == length(x)
@@ -452,17 +454,17 @@ function Base.:*(T::TQSMatrix, x::Vector)
 	b = Vector{type_b}(undef, T.M)
 	h = StateGraph{type_b}(T)
 
-	# diagonal phase
+	# diagonal stage
 	for node in eachindex(T.node_ordering)
 		b[T.mrange[node]] = T.spinners[node].D * x[T.nrange[node]]
 	end
 
 	# Upsweep stage: from leaves to the root
-	for l in length(T.levels):-1:2
-		for i in T.levels[l]
-			j = T.parent[i]
+	for l in length(tree.levels):-1:2
+		for i in tree.levels[l]
+			j = tree.parent[i]
 			h[j][i] += T.spinners[i].inp[j] * x[T.nrange[i]]   #input contribution
-			for w in T.children[i]                             #children state contribution
+			for w in tree.children[i]                             #children state contribution
 				h[j][i] += T.spinners[i].trans[j, w] * h[i][w]
 			end
 			b[T.mrange[j]] += T.spinners[j].out[i] * h[j][i]
@@ -470,14 +472,14 @@ function Base.:*(T::TQSMatrix, x::Vector)
 	end
 
 	# Downsweep stage: from root to the leaves
-	for l in 2:length(T.levels)
-		for i in T.levels[l]
-			j = T.parent[i]
+	for l in 2:length(tree.levels)
+		for i in tree.levels[l]
+			j = tree.parent[i]
 			h[i][j] += T.spinners[j].inp[i] * x[T.nrange[j]]    # input contribution
-			for s in T.siblings[i]                              # sibling contribution
+			for s in tree.siblings[i]                              # sibling contribution
 				h[i][j] += T.spinners[j].trans[i, s] * h[j][s]
 			end
-			k = T.parent[j]
+			k = tree.parent[j]
 			if !isnothing(k)
 				h[i][j] += T.spinners[j].trans[i, k] * h[j][k]  # grandparent contribution
 			end
@@ -488,8 +490,8 @@ function Base.:*(T::TQSMatrix, x::Vector)
 	return b
 end
 
-function Base.:*(T::TQSMatrix, X::AbstractMatrix)
-	return mapslices(x -> T * x, X; dims = 1)
+function Base.:*(T::TQSMatrix, X::AbstractMatrix, tree::Tree)
+	return mapslices(x -> *(T, x, tree), X; dims = 1)
 end
 
 
@@ -497,16 +499,96 @@ end
 # TQS to dense matrix #
 #######################
 
-function Base.:Matrix(T::TQSMatrix)
-	return T * Matrix{eltype(T)}(I, T.N, T.N)
+function Base.:Matrix(T::TQSMatrix, tree::Tree)
+	return *(T, Matrix{eltype(T)}(I, T.N, T.N), tree)
+end
+
+#########################
+# low rank construction #
+#########################
+
+struct HankelFact{Scalar <: Number}
+	X::AbstractMatrix{Scalar}
+	Y::AbstractMatrix{Scalar}
+	p::Int   # "size of factorization" - if X and Y are full rank, p is also the rank
+	function HankelFact{Scalar}(X::AbstractMatrix{Scalar}, Y::AbstractMatrix{Scalar}) where {Scalar <: Number}
+		size(X, 2) == size(Y, 1)
+		p = size(X, 2)
+		new{Scalar}(X, Y, p)
+	end
+end
+function HankelFact{Scalar}(A::AbstractMatrix{Scalar}, tol = 1E-15, r_bound = Inf) where {Scalar <: Number}
+	SVD = svd(A)
+	k = findfirst(x -> x < threshold, S_values)
+	if k > r_bound
+		k = r_bound
+	end
+
+	X = SVD.U[:, 1:k] * Diagonal(SVD.S[1:k])
+	Y = SVD.V[:, 1:k]'
+
+	return HankelFact{Scalar}(X, Y)
 end
 
 ####################
 # TQS construction #
 ####################
+TransGraph{Scalar <: Number} = Dict{Int, IndexedMatrix{Scalar}}
+function TransGraph{Scalar}(T::GraphPartitionedMatrix) where Scalar <: Number
+	# creates a Stategraph with zero entries
+	transgraph = Dict{Int, IndexedMatrix{Scalar}}(k => IndexedMatrix{Scalar}(v) for (k, v) in T.adjacency_list)
+	return transgraph
+end
 
 
-function TQSMatrix(T::GraphPartitionedMatrix, tol = 1E-15, r_bound = Inf)
+
+function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = Inf)
+
+	# construct tree
+	@assert root in T.nodes
+	tree = construct_tree(T, root)
+
+	# Initialize generators
+	D = Dict{Int, Matrix{eltype(T)}}(node => get_block(T, node) for node in eachindex(T.node_ordering))
+	trans = TransGraph{eltype(T)}(T)
+	inp = Dict(k => Dict() for k in T.nodes)
+	out = Dict(k => Dict() for k in T.nodes)
+
+	# generator skeleton hankel 
+	H = Dict(k => Dict() for k in T.nodes)
+
+	# Upsweep stage: from leaves to the root
+	for l in length(tree.levels):-1:2
+		for i in tree.levels[l]
+			#construct F
+			collect(my_set)
+
+			# compute low rank factorization of F
+
+			# Set trans,inp, out
+
+			# construct low rank factorization of Hankel block
+
+		end
+	end
+
+	# Downsweep stage: from root to the leaves
+	for l in 2:length(tree.levels)
+		for i in tree.levels[l]
+			#construct F
+
+
+			# compute low rank factorization of F
+
+			# Set trans,inp, out
+
+			# construct low rank factorization of Hankel block
+
+		end
+	end
+
+
+	return 0, tree
 
 end
 
