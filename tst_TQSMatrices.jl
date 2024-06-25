@@ -153,6 +153,8 @@ node1 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 @test node1.out[3] == out[2]
 @test node1.D == D
 
+# test alternative constructor
+node1_alternative = Spinner{Float64}(id, node1.trans, node1.inp, node1.out, D);
 
 id = 2;
 neighbors = [1];
@@ -444,7 +446,15 @@ tree = construct_tree(adj_list_nodeset_acyclic, 2)
 #         4 -- 6 -- 5
 
 
-T = TQSMatrix(nodeset_acyclic, [1, 2, 3, 4, 5, 6], 1)
+T = TQSMatrix(nodeset_acyclic, [1, 2, 3, 4, 5, 6])
+
+trans_acyclic = Dict{Int, IndexedMatrix{AbstractMatrix{eltype(T)}}}(k => node.trans for (k, node) in nodeset_acyclic)
+inp_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.inp for (k, node) in nodeset_acyclic)
+out_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.out for (k, node) in nodeset_acyclic)
+D_acyclic = Dict{Int, AbstractMatrix{eltype(T)}}(k => node.D for (k, node) in nodeset_acyclic)
+
+T_alternative = TQSMatrix{eltype(T)}(trans_acyclic, inp_acyclic, out_acyclic, D_acyclic, [1, 2, 3, 4, 5, 6])
+
 
 T11 = T.spinners[1].D                                                                   #                1 
 T21 = T.spinners[2].out[1] * T.spinners[1].inp[2]                                   #           2 <- 1 
@@ -491,7 +501,7 @@ T66 = T.spinners[6].D    #                6
 
 
 Tdense =
-	[                                                                       T11 T12 T13 T14 T15 T16
+	[                                                     T11 T12 T13 T14 T15 T16
 		T21 T22 T23 T24 T25 T26
 		T31 T32 T33 T34 T35 T36
 		T41 T42 T43 T44 T45 T46
@@ -526,7 +536,8 @@ x = randn(T.N)
 X = randn(T.N, 30)
 @test *(T, X, tree) ≈ Tdense * X
 
-@test Matrix(T,tree) ≈ Tdense
+@test Matrix(T, tree) ≈ Tdense
+@test Matrix(T_alternative, tree) ≈ Tdense
 
 [true for i in 1:5, j in 1:6]
 

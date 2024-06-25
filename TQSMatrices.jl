@@ -4,7 +4,8 @@ module TQSMatrices
 ###########
 # exports #
 ###########
-export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, IndexedMatrix, is_a_tree
+export ZeroMatrix,
+	Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, IndexedMatrix, is_a_tree
 export GIRS_has_no_bounce_back_operators, construct_tree, GraphPartitionedMatrix
 export get_block, get_hankelblock, StateGraph, TransGraph
 
@@ -55,14 +56,19 @@ struct IndexedMatrix{T <: Any}
 	function IndexedMatrix{T}(array, labels) where {T <: Any}
 		@assert size(array, 1) == size(array, 2)
 		@assert size(array, 1) == length(labels)
-		new{T}(convert(Matrix{T}, array), labels, Dict(label => i for (i, label) in enumerate(labels)), size(array, 1)::Int)
+		new{T}(
+			convert(Matrix{T}, array),
+			labels,
+			Dict(label => i for (i, label) in enumerate(labels)),
+			size(array, 1)::Int,
+		)
 	end
 end
 Base.:getindex(A::IndexedMatrix, i, j) = A.array[A.index_map[i], A.index_map[j]]
 function Base.:setindex!(A::IndexedMatrix, val, i, j)
 	A.array[A.index_map[i], A.index_map[j]] = val
 end
-function IndexedMatrix{T}(A::IndexedMatrix) where T <: Any     # to recast into different type parameter
+function IndexedMatrix{T}(A::IndexedMatrix) where {T <: Any}     # to recast into different type parameter
 	return IndexedMatrix{T}(A.array, A.labels)
 end
 function IndexedMatrix{T}(labels::Vector{Int}) where {T <: Any} # creates an undefined IndexedMatrix
@@ -89,7 +95,13 @@ struct GraphPartitionedMatrix{Scalar <: Number}
 	n::IndexedVector{Int}
 	M::Int
 	N::Int
-	function GraphPartitionedMatrix{Scalar}(mat, nodes, m, n, adjacency_list) where {Scalar <: Number}
+	function GraphPartitionedMatrix{Scalar}(
+		mat,
+		nodes,
+		m,
+		n,
+		adjacency_list,
+	) where {Scalar <: Number}
 		@assert length(m) == length(n) == length(nodes)
 		@assert sum(values(m)) == size(mat, 1)
 		@assert sum(values(n)) == size(mat, 2)
@@ -130,7 +142,8 @@ struct GraphPartitionedMatrix{Scalar <: Number}
 		new{Scalar}(mat, nodes, K, adjacency_list, mrange, nrange, m, n, M, N)
 	end
 end
-GraphPartitionedMatrix(mat, nodes, m, n, adjacency_list) = GraphPartitionedMatrix{eltype(mat)}(mat, nodes, m, n, adjacency_list)
+GraphPartitionedMatrix(mat, nodes, m, n, adjacency_list) =
+	GraphPartitionedMatrix{eltype(mat)}(mat, nodes, m, n, adjacency_list)
 Base.:size(A::GraphPartitionedMatrix) = (A.M, A.N)
 Base.:getindex(A::GraphPartitionedMatrix, i::Int, j::Int) = A.mat[i, j]
 # extract a block
@@ -161,7 +174,8 @@ struct Spinner{Scalar <: Number}
 	p_in::IndexedVector{Int}
 	p_out::IndexedVector{Int}
 
-	function Spinner{Scalar}(id::Int,
+	function Spinner{Scalar}(
+		id::Int,
 		neighbors::Vector{Int},
 		trans::IndexedMatrix{AbstractMatrix{Scalar}},
 		inp::IndexedVector{AbstractMatrix{Scalar}},
@@ -170,7 +184,8 @@ struct Spinner{Scalar <: Number}
 		m::Int,
 		n::Int,
 		p_in::IndexedVector{Int},
-		p_out::IndexedVector{Int}) where {Scalar <: Number}
+		p_out::IndexedVector{Int},
+	) where {Scalar <: Number}
 
 		# spinners cannot have its own node id as neighbor
 		@assert all(x -> x != id, neighbors)
@@ -187,11 +202,11 @@ struct Spinner{Scalar <: Number}
 		# operator dimension checks
 		@assert all([size(out[k]) == (m, p_in[k]) for k in keys(out)])
 		@assert all([size(inp[k]) == (p_out[k], n) for k in keys(inp)])
-		@assert all([size(trans[k, l]) == (p_out[k], p_in[l]) for k in neighbors, l in neighbors])
+		@assert all([
+			size(trans[k, l]) == (p_out[k], p_in[l]) for k in neighbors, l in neighbors
+		])
 
-		new{Scalar}(
-			id, neighbors, trans, inp, out, D, m, n, p_in, p_out,
-		)
+		new{Scalar}(id, neighbors, trans, inp, out, D, m, n, p_in, p_out)
 	end
 
 end
@@ -200,8 +215,37 @@ IndexedVector{Spinner}(S) = Dict(s.id => s for s in S)
 Base.eltype(x::Spinner) = typeof(x).parameters[1]
 
 
+# alternative constructor 1
+function Spinner{Scalar}(
+	id::Int,
+	trans::IndexedMatrix{AbstractMatrix{Scalar}},
+	inp::IndexedVector{AbstractMatrix{Scalar}},
+	out::IndexedVector{AbstractMatrix{Scalar}},
+	D::AbstractMatrix{Scalar},
+) where {Scalar <: Number}
+	return Spinner{Scalar}(
+		id,
+		trans.labels,
+		trans,
+		inp,
+		out,
+		D,
+		size(D, 1),
+		size(D, 2),
+		Dict(j => size(c, 2) for (j, c) in out),
+		Dict(j => size(b, 1) for (j, b) in inp),
+	)
+end
 
-function Spinner{Scalar}(id, neighbors, trans, inp, out, D) where {Scalar <: Number}
+# alternative constructor 2
+function Spinner{Scalar}(
+	id::Int,
+	neighbors::Vector{Int},
+	trans,
+	inp,
+	out,
+	D,
+) where {Scalar <: Number}
 	return Spinner{Scalar}(
 		id,
 		neighbors,
@@ -215,6 +259,7 @@ function Spinner{Scalar}(id, neighbors, trans, inp, out, D) where {Scalar <: Num
 		Dict(j => size(b, 1) for (j, b) in zip(neighbors, inp)),
 	)
 end
+
 
 #########################################################################
 # Check if vector of spinners is a valid (infinite) GIRS representation #
@@ -358,9 +403,20 @@ function construct_tree(adj_list, root)
 		recursively_add_children!(k)
 	end
 	nodes = keys(adj_list)
-	descendants_complement = Dict{Int, Set{Int}}(k => setdiff(nodes, descendants[k]) for k in nodes)
+	descendants_complement =
+		Dict{Int, Set{Int}}(k => setdiff(nodes, descendants[k]) for k in nodes)
 
-	return Tree(adj_list, root, tree_depth, levels, parent, children, siblings, descendants, descendants_complement)
+	return Tree(
+		adj_list,
+		root,
+		tree_depth,
+		levels,
+		parent,
+		children,
+		siblings,
+		descendants,
+		descendants_complement,
+	)
 end
 construct_tree(T::GraphPartitionedMatrix, root) = construct_tree(T.adjecency_list, root)
 
@@ -385,14 +441,13 @@ struct TQSMatrix{Scalar <: Number}
 	M::Int
 	N::Int
 
-	function TQSMatrix{Scalar}(spinners, node_ordering, root) where {Scalar <: Number}
+	function TQSMatrix{Scalar}(spinners, node_ordering) where {Scalar <: Number}
 
 		# correctness of input
 		@assert all(s -> eltype(s) == Scalar, values(spinners))
 		@assert all([spinners[k].id == k for k in keys(spinners)])
 		@assert length(spinners) == length(node_ordering)
 		@assert Set(keys(spinners)) == Set(node_ordering)
-		@assert root in node_ordering
 
 		# checks spinners generate a valid TQS matrix
 		@assert GIRS_is_consistent(spinners)
@@ -421,10 +476,10 @@ struct TQSMatrix{Scalar <: Number}
 		new{Scalar}(spinners, node_ordering, K, adjecency_list, m, n, mrange, nrange, M, N)
 	end
 end
-function TQSMatrix(spinners, node_ordering, root)
+function TQSMatrix(spinners, node_ordering)
 	@assert !isempty(spinners)
 	T = eltype(spinners[1])
-	return TQSMatrix{T}(spinners, node_ordering, root)
+	return TQSMatrix{T}(spinners, node_ordering)
 end
 Base.eltype(T::TQSMatrix) = typeof(T).parameters[1]
 Base.:size(T::TQSMatrix) = (T.M, T.N)
@@ -434,11 +489,14 @@ construct_tree(T::TQSMatrix, root) = construct_tree(T.adjecency_list, root)
 # TQS matrix vector multiply #
 ##############################
 StateGraph{Scalar <: Number} = Dict{Int, Dict{Int, Vector{Scalar}}}
-function StateGraph{Scalar}(T::TQSMatrix) where Scalar <: Number
+function StateGraph{Scalar}(T::TQSMatrix) where {Scalar <: Number}
 	# creates a Stategraph with zero entries
 	stategraph = StateGraph{Scalar}()
 	for (node, neighbors) in T.adjecency_list
-		stategraph[node] = Dict(neighbor => zeros(Scalar, T.spinners[node].p_in[neighbor]) for neighbor in neighbors)
+		stategraph[node] = Dict(
+			neighbor => zeros(Scalar, T.spinners[node].p_in[neighbor]) for
+			neighbor in neighbors
+		)
 	end
 	return stategraph
 end
@@ -460,7 +518,7 @@ function Base.:*(T::TQSMatrix, x::Vector, tree::Tree)
 	end
 
 	# Upsweep stage: from leaves to the root
-	for l in length(tree.levels):-1:2
+	for l ∈ length(tree.levels):-1:2
 		for i in tree.levels[l]
 			j = tree.parent[i]
 			h[j][i] += T.spinners[i].inp[j] * x[T.nrange[i]]   #input contribution
@@ -472,7 +530,7 @@ function Base.:*(T::TQSMatrix, x::Vector, tree::Tree)
 	end
 
 	# Downsweep stage: from root to the leaves
-	for l in 2:length(tree.levels)
+	for l ∈ 2:length(tree.levels)
 		for i in tree.levels[l]
 			j = tree.parent[i]
 			h[i][j] += T.spinners[j].inp[i] * x[T.nrange[j]]    # input contribution
@@ -511,13 +569,20 @@ struct HankelFact{Scalar <: Number}
 	X::AbstractMatrix{Scalar}
 	Y::AbstractMatrix{Scalar}
 	p::Int   # "size of factorization" - if X and Y are full rank, p is also the rank
-	function HankelFact{Scalar}(X::AbstractMatrix{Scalar}, Y::AbstractMatrix{Scalar}) where {Scalar <: Number}
+	function HankelFact{Scalar}(
+		X::AbstractMatrix{Scalar},
+		Y::AbstractMatrix{Scalar},
+	) where {Scalar <: Number}
 		size(X, 2) == size(Y, 1)
 		p = size(X, 2)
 		new{Scalar}(X, Y, p)
 	end
 end
-function HankelFact{Scalar}(A::AbstractMatrix{Scalar}, tol = 1E-15, r_bound = Inf) where {Scalar <: Number}
+function HankelFact{Scalar}(
+	A::AbstractMatrix{Scalar},
+	tol = 1E-15,
+	r_bound = Inf,
+) where {Scalar <: Number}
 	SVD = svd(A)
 	k = findfirst(x -> x < threshold, S_values)
 	if k > r_bound
@@ -534,10 +599,27 @@ end
 # TQS construction #
 ####################
 TransGraph{Scalar <: Number} = Dict{Int, IndexedMatrix{Scalar}}
-function TransGraph{Scalar}(T::GraphPartitionedMatrix) where Scalar <: Number
-	# creates a Stategraph with zero entries
-	transgraph = Dict{Int, IndexedMatrix{Scalar}}(k => IndexedMatrix{Scalar}(v) for (k, v) in T.adjacency_list)
+function TransGraph{Scalar}(T::GraphPartitionedMatrix) where {Scalar <: Number}
+	transgraph = Dict{Int, IndexedMatrix{Scalar}}(
+		k => IndexedMatrix{Scalar}(v) for (k, v) in T.adjacency_list
+	)
 	return transgraph
+end
+
+
+#n alternative constructor for TQS matrix
+function TQSMatrix{T}(
+	trans,
+	inp,
+	out,
+	D,
+	node_ordering,
+) where {T <: Number}
+	spinners = Dict()
+	for k in node_ordering
+		spinners[k] = Spinner{T}(k, trans[k], inp[k], out[k], D[k])
+	end
+	return TQSMatrix{T}(spinners, node_ordering)
 end
 
 
@@ -549,16 +631,22 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 	tree = construct_tree(T, root)
 
 	# Initialize generators
-	D = Dict{Int, Matrix{eltype(T)}}(node => get_block(T, node) for node in eachindex(T.node_ordering))
+	D = Dict{Int, Matrix{eltype(T)}}(
+		node => get_block(T, node) for node in eachindex(T.node_ordering)
+	)
 	trans = TransGraph{eltype(T)}(T)
-	inp = Dict(k => Dict() for k in T.nodes)
-	out = Dict(k => Dict() for k in T.nodes)
+	inp = Dict{Int, Dict{Int, Matrix{eltype(T)}}}(
+		k => Dict{Int, Matrix{eltype(T)}}() for k in T.nodes
+	)
+	out = Dict{Int, Dict{Int, Matrix{eltype(T)}}}(
+		k => Dict{Int, Matrix{eltype(T)}}() for k in T.nodes
+	)
 
 	# generator skeleton hankel 
 	H = Dict(k => Dict() for k in T.nodes)
 
 	# Upsweep stage: from leaves to the root
-	for l in length(tree.levels):-1:2
+	for l ∈ length(tree.levels):-1:2
 		for i in tree.levels[l]
 			#construct F
 			collect(my_set)
@@ -573,7 +661,7 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 	end
 
 	# Downsweep stage: from root to the leaves
-	for l in 2:length(tree.levels)
+	for l ∈ 2:length(tree.levels)
 		for i in tree.levels[l]
 			#construct F
 
@@ -587,6 +675,8 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 		end
 	end
 
+
+	# construct TQS matrix (create alternative constructor!)
 
 	return 0, tree
 
