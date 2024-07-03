@@ -502,7 +502,7 @@ T66 = T.spinners[6].D    #                6
 
 
 Tdense =
-	[                                               T11 T12 T13 T14 T15 T16
+	[                                            T11 T12 T13 T14 T15 T16
 		T21 T22 T23 T24 T25 T26
 		T31 T32 T33 T34 T35 T36
 		T41 T42 T43 T44 T45 T46
@@ -523,7 +523,7 @@ Tdense =
 #         4 -- 6 -- 5
 
 stategraph = StateGraph{Float64}(T);
-@test all([Set(T.adjecency_list[k]) == Set(keys(stategraph[k])) for k in T.node_ordering])
+@test all([Set(T.adjacency_list[k]) == Set(keys(stategraph[k])) for k in T.node_ordering])
 @test all([all([T.spinners[k].p_in[v_k] == length(v_v) for (v_k, v_v) in v]) for (k, v) in stategraph])
 
 

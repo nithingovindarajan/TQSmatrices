@@ -329,14 +329,14 @@ end
 #########################
 
 struct Tree
-	adjecency_list::IndexedVector{Vector{Int}}
+	adjacency_list::IndexedVector{Vector{Int}}
 	root::Int
 	tree_depth::Int
 	levels::Vector{Vector{Int}}
 	parent::IndexedVector{Union{Int, Nothing}}
 	children::IndexedVector{Vector{Int}}
 	siblings::IndexedVector{Vector{Int}}
-	descendants::IndexedVector{Vector{Int}} 
+	descendants::IndexedVector{Vector{Int}}
 	descendants_complement::IndexedVector{Vector{Int}}
 end
 
@@ -420,7 +420,7 @@ function construct_tree(adj_list, root)
 		descendants_complement,
 	)
 end
-construct_tree(T::GraphPartitionedMatrix, root) = construct_tree(T.adjecency_list, root)
+construct_tree(T::GraphPartitionedMatrix, root) = construct_tree(T.adjacency_list, root)
 
 
 
@@ -434,7 +434,7 @@ struct TQSMatrix{Scalar <: Number}
 	# graph attributes
 	node_ordering::Vector{Int}
 	K::Int
-	adjecency_list::IndexedVector{Vector{Int}}
+	adjacency_list::IndexedVector{Vector{Int}}
 	# dimensions
 	m::IndexedVector{Int}
 	n::IndexedVector{Int}
@@ -454,8 +454,8 @@ struct TQSMatrix{Scalar <: Number}
 		# checks spinners generate a valid TQS matrix
 		@assert GIRS_is_consistent(spinners)
 		@assert GIRS_has_no_bounce_back_operators(spinners)
-		adjecency_list = Dict(s.id => s.neighbors for s in values(spinners))
-		@assert is_a_tree(adjecency_list)
+		adjacency_list = Dict(s.id => s.neighbors for s in values(spinners))
+		@assert is_a_tree(adjacency_list)
 
 		K = length(node_ordering)
 		m = Dict(s.id => s.m for s in values(spinners))
@@ -475,7 +475,7 @@ struct TQSMatrix{Scalar <: Number}
 		M = sum(values(m))
 		N = sum(values(n))
 
-		new{Scalar}(spinners, node_ordering, K, adjecency_list, m, n, mrange, nrange, M, N)
+		new{Scalar}(spinners, node_ordering, K, adjacency_list, m, n, mrange, nrange, M, N)
 	end
 end
 function TQSMatrix(spinners, node_ordering)
@@ -485,7 +485,7 @@ function TQSMatrix(spinners, node_ordering)
 end
 Base.eltype(T::TQSMatrix) = typeof(T).parameters[1]
 Base.:size(T::TQSMatrix) = (T.M, T.N)
-construct_tree(T::TQSMatrix, root) = construct_tree(T.adjecency_list, root)
+construct_tree(T::TQSMatrix, root) = construct_tree(T.adjacency_list, root)
 
 ##############################
 # TQS matrix vector multiply #
@@ -494,7 +494,7 @@ StateGraph{Scalar <: Number} = Dict{Int, Dict{Int, Vector{Scalar}}}
 function StateGraph{Scalar}(T::TQSMatrix) where {Scalar <: Number}
 	# creates a Stategraph with zero entries
 	stategraph = StateGraph{Scalar}()
-	for (node, neighbors) in T.adjecency_list
+	for (node, neighbors) in T.adjacency_list
 		stategraph[node] = Dict(
 			neighbor => zeros(Scalar, T.spinners[node].p_in[neighbor]) for
 			neighbor in neighbors
@@ -685,19 +685,22 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 	for l ∈ length(tree.levels):-1:2
 		for i in tree.levels[l]
 			# parent and children
-			j = tree.parent[i]
-			w = collect(tree.children[i])
-			nodes_out = collect(tree.descendants_complement[i])
-			nodes_in_offsprings =
-				collect(Base.Iterators.flatten([tree.descendants[w_t] for w_t in w]))
-			m = Dict{Int, Int}(node => T.m[node] for node in nodes_out)
-			n = Dict{Int, Int}(node => T.n[node] for node in [nodes_in_offsprings; i])
+			j, w = tree.parent[i], tree.children[i]
+			Dbari = tree.descendants_complement[i]
+			Dw_t = vcat([tree.descendants[w_t] for w_t in w]...)
+
+			#construct F
+			F = hcat([getXblock(H[w_t][i], Dbari) for w_t in w]...)
+			F = [F T[Dbari, i]]
+
+
+			m = Dict{Int, Int}(node => T.m[node] for node in Dbari)
+			n = Dict{Int, Int}(node => T.n[node] for node in [Dw_t; i])
 			M = sum(m)
 			N = sum(n)
-			# construct mrange
 			mrange = Dict{Int, UnitRange}()
 			off = 0
-			for node in nodes_out
+			for node in Dbari
 				mrange[node] = (off+1):(off+m[node])
 				off = off + m[node]
 			end
@@ -708,13 +711,6 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 				nrange[node] = (off+1):(off+n[node])
 				off = off + n[node]
 			end
-
-			#construct F
-			F = Array{eltype(T)}(undef, sum(m), 0)
-			for c in w
-				F = [F getXblock(H[c][i], nodes_out)]
-			end
-			F = [F T[nodes_out, i]]
 
 			# compute low rank factorization of F
 			X, Z = lowrankapprox(F, tol = tol, r_bound = r_bound)
@@ -727,7 +723,6 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 			end
 
 			# construct low rank factorization of Hankel block
-
 			H[i][j] = HankelFact(X, Y)
 		end
 	end
@@ -749,8 +744,10 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 
 
 	# construct TQS matrix (create alternative constructor!)
+	T_TQS = TQSMatrix(trans, inp, out, D, T.nodes)
 
-	return 0, tree
+
+	return T_TQS, tree
 
 end
 
