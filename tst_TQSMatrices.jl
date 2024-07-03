@@ -88,6 +88,7 @@ nodeset_out = rand(nodes, 2)
 nodeset_in = rand(nodes, 2)
 nodeset_out = rand(nodes)
 @test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+
 nodeset_in = rand(nodes, 2)
 nodeset_out = rand(nodes, 2)
 @test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
@@ -392,30 +393,30 @@ tree = construct_tree(adj_list_nodeset_acyclic, 1)
 @test isnothing(tree.parent[1])
 @test tree.parent[2] == 1
 @test tree.parent[6] == 1
-@test tree.children[1] == Set([3, 6, 2])
-@test tree.children[6] == Set([4, 5])
-@test tree.children[2] == Set([])
+@test Set(tree.children[1]) == Set([3, 6, 2])
+@test Set(tree.children[6]) == Set([4, 5])
+@test Set(tree.children[2]) == Set([])
 @test length(tree.siblings) == length(nodeset_acyclic)
-@test tree.siblings[3] == Set([2, 6])
-@test tree.siblings[2] == Set([3, 6])
-@test tree.siblings[6] == Set([2, 3])
-@test tree.siblings[4] == Set([5])
-@test tree.siblings[5] == Set([4])
-@test tree.siblings[1] == Set([])
+@test Set(tree.siblings[3]) == Set([2, 6])
+@test Set(tree.siblings[2]) == Set([3, 6])
+@test Set(tree.siblings[6]) == Set([2, 3])
+@test Set(tree.siblings[4]) == Set([5])
+@test Set(tree.siblings[5]) == Set([4])
+@test Set(tree.siblings[1]) == Set([])
 
-@test tree.descendants[1] == Set([1, 2, 3, 4, 5, 6])
-@test tree.descendants[2] == Set([2])
-@test tree.descendants[3] == Set([3])
-@test tree.descendants[4] == Set([4])
-@test tree.descendants[5] == Set([5])
-@test tree.descendants[6] == Set([6, 4, 5])
+@test Set(tree.descendants[1]) == Set([1, 2, 3, 4, 5, 6])
+@test Set(tree.descendants[2]) == Set([2])
+@test Set(tree.descendants[3]) == Set([3])
+@test Set(tree.descendants[4]) == Set([4])
+@test Set(tree.descendants[5]) == Set([5])
+@test Set(tree.descendants[6]) == Set([4, 5, 6])
 
-@test tree.descendants_complement[1] == Set([])
-@test tree.descendants_complement[2] == Set([1, 3, 4, 5, 6])
-@test tree.descendants_complement[3] == Set([1, 2, 4, 5, 6])
-@test tree.descendants_complement[4] == Set([1, 3, 2, 5, 6])
-@test tree.descendants_complement[5] == Set([1, 3, 4, 2, 6])
-@test tree.descendants_complement[6] == Set([1, 2, 3])
+@test Set(tree.descendants_complement[1]) == Set([])
+@test Set(tree.descendants_complement[2]) == Set([1, 3, 4, 5, 6])
+@test Set(tree.descendants_complement[3]) == Set([1, 2, 4, 5, 6])
+@test Set(tree.descendants_complement[4]) == Set([1, 3, 2, 5, 6])
+@test Set(tree.descendants_complement[5]) == Set([1, 3, 4, 2, 6])
+@test Set(tree.descendants_complement[6]) == Set([1, 2, 3])
 
 
 tree = construct_tree(adj_list_nodeset_acyclic, 2)
@@ -424,17 +425,17 @@ tree = construct_tree(adj_list_nodeset_acyclic, 2)
 @test Set(tree.levels[2]) == Set([1])
 @test Set(tree.levels[3]) == Set([3, 6])
 @test Set(tree.levels[4]) == Set([4, 5])
-@test tree.children[2] == Set([1])
-@test tree.children[1] == Set([3, 6])
-@test tree.children[6] == Set([4, 5])
-@test tree.children[5] == Set([])
+@test Set(tree.children[2]) == Set([1])
+@test Set(tree.children[1]) == Set([3, 6])
+@test Set(tree.children[6]) == Set([4, 5])
+@test Set(tree.children[5]) == Set([])
 @test length(tree.siblings) == length(nodeset_acyclic)
-@test tree.siblings[3] == Set([6])
-@test tree.siblings[2] == Set([])
-@test tree.siblings[6] == Set([3])
-@test tree.siblings[4] == Set([5])
-@test tree.siblings[5] == Set([4])
-@test tree.siblings[1] == Set([])
+@test Set(tree.siblings[3]) == Set([6])
+@test Set(tree.siblings[2]) == Set([])
+@test Set(tree.siblings[6]) == Set([3])
+@test Set(tree.siblings[4]) == Set([5])
+@test Set(tree.siblings[5]) == Set([4])
+@test Set(tree.siblings[1]) == Set([])
 
 #########################
 # Test: TQS matrix type #
@@ -446,14 +447,14 @@ tree = construct_tree(adj_list_nodeset_acyclic, 2)
 #         4 -- 6 -- 5
 
 
-T = TQSMatrix(nodeset_acyclic, [1, 2, 3, 4, 5, 6])
+T = TQSMatrix(nodeset_acyclic, [1, 2, 3, 4, 5, 6]);
 
-trans_acyclic = Dict{Int, IndexedMatrix{AbstractMatrix{eltype(T)}}}(k => node.trans for (k, node) in nodeset_acyclic)
-inp_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.inp for (k, node) in nodeset_acyclic)
-out_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.out for (k, node) in nodeset_acyclic)
-D_acyclic = Dict{Int, AbstractMatrix{eltype(T)}}(k => node.D for (k, node) in nodeset_acyclic)
+trans_acyclic = Dict{Int, IndexedMatrix{AbstractMatrix{eltype(T)}}}(k => node.trans for (k, node) in nodeset_acyclic);
+inp_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.inp for (k, node) in nodeset_acyclic);
+out_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.out for (k, node) in nodeset_acyclic);
+D_acyclic = Dict{Int, AbstractMatrix{eltype(T)}}(k => node.D for (k, node) in nodeset_acyclic);
 
-T_alternative = TQSMatrix{eltype(T)}(trans_acyclic, inp_acyclic, out_acyclic, D_acyclic, [1, 2, 3, 4, 5, 6])
+T_alternative = TQSMatrix{eltype(T)}(trans_acyclic, inp_acyclic, out_acyclic, D_acyclic, [1, 2, 3, 4, 5, 6]);
 
 
 T11 = T.spinners[1].D                                                                   #                1 
@@ -501,12 +502,12 @@ T66 = T.spinners[6].D    #                6
 
 
 Tdense =
-	[                                                     T11 T12 T13 T14 T15 T16
+	[                                               T11 T12 T13 T14 T15 T16
 		T21 T22 T23 T24 T25 T26
 		T31 T32 T33 T34 T35 T36
 		T41 T42 T43 T44 T45 T46
 		T51 T52 T53 T54 T55 T56
-		T61 T62 T63 T64 T65 T66]
+		T61 T62 T63 T64 T65 T66];
 
 
 
@@ -521,7 +522,7 @@ Tdense =
 #              |
 #         4 -- 6 -- 5
 
-stategraph = StateGraph{Float64}(T)
+stategraph = StateGraph{Float64}(T);
 @test all([Set(T.adjecency_list[k]) == Set(keys(stategraph[k])) for k in T.node_ordering])
 @test all([all([T.spinners[k].p_in[v_k] == length(v_v) for (v_k, v_v) in v]) for (k, v) in stategraph])
 

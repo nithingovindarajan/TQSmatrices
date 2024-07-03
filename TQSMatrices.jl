@@ -334,10 +334,10 @@ struct Tree
 	tree_depth::Int
 	levels::Vector{Vector{Int}}
 	parent::IndexedVector{Union{Int, Nothing}}
-	children::IndexedVector{Set{Int}}
-	siblings::IndexedVector{Set{Int}}
-	descendants::IndexedVector{Set{Int}}
-	descendants_complement::IndexedVector{Set{Int}}
+	children::IndexedVector{Vector{Int}}
+	siblings::IndexedVector{Vector{Int}}
+	descendants::IndexedVector{Vector{Int}} 
+	descendants_complement::IndexedVector{Vector{Int}}
 end
 
 function construct_tree(adj_list, root)
@@ -372,15 +372,16 @@ function construct_tree(adj_list, root)
 
 
 	# determine children
-	children = Dict{Int, Set{Int}}(k => Set([]) for k in keys(adj_list))
+	children = Dict{Int, Vector{Int}}(k => [] for k in keys(adj_list))
 	for k in keys(parent)
 		if !isnothing(parent[k])
 			push!(children[parent[k]], k)
 		end
 	end
 
+
 	# determine siblings
-	siblings = Dict{Int, Set{Int}}(root => Set{Int}([]))
+	siblings = Dict{Int, Vector{Int}}(k => [] for k in keys(adj_list))
 	for childrenset in values(children)
 		if !isempty(childrenset)
 			for c in childrenset
@@ -389,8 +390,9 @@ function construct_tree(adj_list, root)
 		end
 	end
 
+
 	# determine descendant and descendants complement
-	descendants = Dict{Int, Set{Int}}(k => Set([k]) for k in keys(adj_list))
+	descendants = Dict{Int, Vector{Int}}(k => [k] for k in keys(adj_list))
 	for k in keys(descendants)
 		function recursively_add_children!(x)
 			if !isempty(children[x])
@@ -404,7 +406,7 @@ function construct_tree(adj_list, root)
 	end
 	nodes = keys(adj_list)
 	descendants_complement =
-		Dict{Int, Set{Int}}(k => setdiff(nodes, descendants[k]) for k in nodes)
+		Dict{Int, Vector{Int}}(k => collect(setdiff(nodes, descendants[k])) for k in nodes)
 
 	return Tree(
 		adj_list,
@@ -561,39 +563,79 @@ function Base.:Matrix(T::TQSMatrix, tree::Tree)
 	return *(T, Matrix{eltype(T)}(I, T.N, T.N), tree)
 end
 
-#########################
-# low rank construction #
-#########################
+##########################
+# low rank approximation #
+##########################
 
-struct HankelFact{Scalar <: Number}
-	X::AbstractMatrix{Scalar}
-	Y::AbstractMatrix{Scalar}
-	p::Int   # "size of factorization" - if X and Y are full rank, p is also the rank
-	function HankelFact{Scalar}(
-		X::AbstractMatrix{Scalar},
-		Y::AbstractMatrix{Scalar},
-	) where {Scalar <: Number}
-		size(X, 2) == size(Y, 1)
-		p = size(X, 2)
-		new{Scalar}(X, Y, p)
-	end
-end
-function HankelFact{Scalar}(
-	A::AbstractMatrix{Scalar},
-	tol = 1E-15,
-	r_bound = Inf,
-) where {Scalar <: Number}
+function lowrankapprox(A, tol = 1E-15, r_bound = Inf)
 	SVD = svd(A)
-	k = findfirst(x -> x < threshold, S_values)
+	k = findfirst(x -> x < tol, S_values)
 	if k > r_bound
 		k = r_bound
 	end
-
 	X = SVD.U[:, 1:k] * Diagonal(SVD.S[1:k])
 	Y = SVD.V[:, 1:k]'
-
-	return HankelFact{Scalar}(X, Y)
+	return X, Y
 end
+
+
+########################
+# Hankel factorization #
+########################
+
+
+struct HankelFact
+	X::AbstractMatrix
+	Y::AbstractMatrix
+	nodes_out::Vector{Int}
+	nodes_in::Vector{Int}
+	# mapping between nodes and matrix entries
+	mrange::IndexedVector{UnitRange}
+	nrange::IndexedVector{UnitRange}
+	# dimensions
+	m::IndexedVector{Int}
+	n::IndexedVector{Int}
+	M::Int
+	N::Int
+	p::Int   # "size of factorization" - if X and Y are full rank, p is also the rank
+
+	function HankelFact(X, Y, nodes_out, nodes_in, m, n)
+		@assert length(nodes_out) == length(m)
+		@assert length(nodes_in) == length(n)
+		@assert size(X, 1) == sum(m)
+		@assert size(Y, 2) == sum(n)
+		@assert size(X, 2) == size(Y, 1)
+
+		# M, N, p
+		M = sum(m)
+		N = sum(n)
+		p = size(X, 2)
+
+		# m and n
+		m = IndexedVector{Int}(m, nodes_out)
+		n = IndexedVector{Int}(n, nodes_in)
+
+		# construct mrange
+		mrange = Dict{Int, UnitRange}()
+		off = 0
+		for node in nodes_out
+			mrange[node] = (off+1):(off+m[node])
+			off = off + m[node]
+		end
+
+		# construct nrange
+		nrange = Dict{Int, UnitRange}()
+		off = 0
+		for node in nodes_in
+			nrange[node] = (off+1):(off+n[node])
+			off = off + n[node]
+		end
+
+		new(X, Y, nodes_out, nodes_in, mrange, nrange, m, n, M, N, p)
+	end
+end
+
+
 
 ####################
 # TQS construction #
@@ -608,13 +650,7 @@ end
 
 
 #n alternative constructor for TQS matrix
-function TQSMatrix{T}(
-	trans,
-	inp,
-	out,
-	D,
-	node_ordering,
-) where {T <: Number}
+function TQSMatrix{T}(trans, inp, out, D, node_ordering) where {T <: Number}
 	spinners = Dict()
 	for k in node_ordering
 		spinners[k] = Spinner{T}(k, trans[k], inp[k], out[k], D[k])
@@ -642,21 +678,57 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 		k => Dict{Int, Matrix{eltype(T)}}() for k in T.nodes
 	)
 
-	# generator skeleton hankel 
+	# generator skeleton hankel graph
 	H = Dict(k => Dict() for k in T.nodes)
 
 	# Upsweep stage: from leaves to the root
 	for l ∈ length(tree.levels):-1:2
 		for i in tree.levels[l]
+			# parent and children
+			j = tree.parent[i]
+			w = collect(tree.children[i])
+			nodes_out = collect(tree.descendants_complement[i])
+			nodes_in_offsprings =
+				collect(Base.Iterators.flatten([tree.descendants[w_t] for w_t in w]))
+			m = Dict{Int, Int}(node => T.m[node] for node in nodes_out)
+			n = Dict{Int, Int}(node => T.n[node] for node in [nodes_in_offsprings; i])
+			M = sum(m)
+			N = sum(n)
+			# construct mrange
+			mrange = Dict{Int, UnitRange}()
+			off = 0
+			for node in nodes_out
+				mrange[node] = (off+1):(off+m[node])
+				off = off + m[node]
+			end
+			# construct nrange
+			nrange = Dict{Int, UnitRange}()
+			off = 0
+			for node in nodes_in
+				nrange[node] = (off+1):(off+n[node])
+				off = off + n[node]
+			end
+
 			#construct F
-			collect(my_set)
+			F = Array{eltype(T)}(undef, sum(m), 0)
+			for c in w
+				F = [F getXblock(H[c][i], nodes_out)]
+			end
+			F = [F T[nodes_out, i]]
 
 			# compute low rank factorization of F
+			X, Z = lowrankapprox(F, tol = tol, r_bound = r_bound)
 
-			# Set trans,inp, out
+			# Set inp, trans, out
+			inp[i][j] = 0
+			out[j][i] = 0
+			for w_t in w
+				trans[i][j, w_t] = 0
+			end
 
 			# construct low rank factorization of Hankel block
 
+			H[i][j] = HankelFact(X, Y)
 		end
 	end
 
