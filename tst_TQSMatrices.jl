@@ -77,6 +77,7 @@ tmp_m = [0; cumsum(m)]
 tmp_n = [0; cumsum(n)]
 
 A = GraphPartitionedMatrix(mat, nodes, m, n, adjacency_list)
+@test eltype(A) == eltype(mat)
 @test all([A.m[nodes[k]] == m[k] for k in eachindex(nodes)])
 @test all([A.n[nodes[k]] == n[k] for k in eachindex(nodes)])
 @test all([A.mrange[nodes[k]] == tmp_m[k]+1:tmp_m[k+1] for k in eachindex(nodes)])
@@ -502,7 +503,7 @@ T66 = T.spinners[6].D    #                6
 
 
 Tdense =
-	[                                            T11 T12 T13 T14 T15 T16
+	[                                      T11 T12 T13 T14 T15 T16
 		T21 T22 T23 T24 T25 T26
 		T31 T32 T33 T34 T35 T36
 		T41 T42 T43 T44 T45 T46
@@ -542,7 +543,9 @@ X = randn(T.N, 30)
 
 [true for i in 1:5, j in 1:6]
 
-
+####################
+# Test: HankelFact #
+####################
 
 
 

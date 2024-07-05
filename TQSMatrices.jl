@@ -16,6 +16,8 @@ using LinearAlgebra
 using IterTools
 using Base.Iterators
 
+
+
 ##############
 # ZeroMatrix #
 ##############
@@ -42,6 +44,31 @@ IndexedVector{T <: Any} = Dict{Int, T}
 IndexedVector{T}(array, labels) where {T <: Any} = Dict{Int, T}(zip(labels, array))
 function IndexedVector{T}(v::IndexedVector) where {T <: Any}
 	return Dict{Int, T}(key => val for (key, val) in v)
+end
+
+#############
+# Utilities #
+#############
+
+function construct_range_vec(node_sizes::IndexedVector{Int}, nodes)
+	ranges = IndexedVector{UnitRange}()
+	off = 0
+	for node in nodes
+		ranges[node] = (off+1):(off+node_sizes[node])
+		off = off + node_sizes[node]
+	end
+	return ranges
+end
+
+
+function construct_range_vec(node_sizes::Vector{Int})
+	ranges = IndexedVector{UnitRange}()
+	off = 0
+	for k in eachindex(node_sizes)
+		ranges[k] = (off+1):(off+node_sizes[k])
+		off = off + node_sizes[k]
+	end
+	return ranges
 end
 
 #################
@@ -82,7 +109,7 @@ Base.:size(A::IndexedMatrix, i) = size(A)[i]
 # Graph Partitioned matrix #
 ############################
 struct GraphPartitionedMatrix{Scalar <: Number}
-	mat::AbstractMatrix
+	mat::AbstractMatrix{Scalar}
 	# graph attributes
 	nodes::Vector{Int}
 	K::Int
@@ -122,21 +149,9 @@ struct GraphPartitionedMatrix{Scalar <: Number}
 		m = IndexedVector{Int}(m, nodes)
 		n = IndexedVector{Int}(n, nodes)
 
-		# construct mrange
-		mrange = Dict{Int, UnitRange}()
-		off = 0
-		for node in nodes
-			mrange[node] = (off+1):(off+m[node])
-			off = off + m[node]
-		end
-
-		# construct nrange
-		nrange = Dict{Int, UnitRange}()
-		off = 0
-		for node in nodes
-			nrange[node] = (off+1):(off+n[node])
-			off = off + n[node]
-		end
+		# construct ranges
+		mrange = construct_range_vec(m, nodes)
+		nrange = construct_range_vec(n, nodes)
 
 		# construct 
 		new{Scalar}(mat, nodes, K, adjacency_list, mrange, nrange, m, n, M, N)
@@ -146,6 +161,7 @@ GraphPartitionedMatrix(mat, nodes, m, n, adjacency_list) =
 	GraphPartitionedMatrix{eltype(mat)}(mat, nodes, m, n, adjacency_list)
 Base.:size(A::GraphPartitionedMatrix) = (A.M, A.N)
 Base.:getindex(A::GraphPartitionedMatrix, i::Int, j::Int) = A.mat[i, j]
+Base.eltype(A::GraphPartitionedMatrix) = typeof(A).parameters[1]
 # extract a block
 function get_block(A::GraphPartitionedMatrix, i, j)
 	rows = vcat([A.mrange[k] for k in i]...)
@@ -460,18 +476,8 @@ struct TQSMatrix{Scalar <: Number}
 		K = length(node_ordering)
 		m = Dict(s.id => s.m for s in values(spinners))
 		n = Dict(s.id => s.n for s in values(spinners))
-		mrange = Dict{Int, UnitRange}()
-		off = 0
-		for node in node_ordering
-			mrange[node] = (off+1):(off+m[node])
-			off = off + m[node]
-		end
-		nrange = Dict{Int, UnitRange}()
-		off = 0
-		for node in node_ordering
-			nrange[node] = (off+1):(off+n[node])
-			off = off + n[node]
-		end
+		mrange = construct_range_vec(m, node_ordering)
+		nrange = construct_range_vec(n, node_ordering)
 		M = sum(values(m))
 		N = sum(values(n))
 
@@ -567,15 +573,15 @@ end
 # low rank approximation #
 ##########################
 
-function lowrankapprox(A, tol = 1E-15, r_bound = Inf)
-	SVD = svd(A)
-	k = findfirst(x -> x < tol, S_values)
-	if k > r_bound
-		k = r_bound
+function lowrankapprox(A; tol = 1E-15, ρ_max = Inf)
+	U, S, V = svd(A)
+	ρ = findfirst(x -> x < tol, S)
+	if ρ > ρ_max
+		ρ = ρ_max
 	end
-	X = SVD.U[:, 1:k] * Diagonal(SVD.S[1:k])
-	Y = SVD.V[:, 1:k]'
-	return X, Y
+	X = U[:, 1:k] * Diagonal(S[1:k])
+	Y = V[:, 1:k]'
+	return X, Y, ρ
 end
 
 
@@ -616,20 +622,8 @@ struct HankelFact
 		n = IndexedVector{Int}(n, nodes_in)
 
 		# construct mrange
-		mrange = Dict{Int, UnitRange}()
-		off = 0
-		for node in nodes_out
-			mrange[node] = (off+1):(off+m[node])
-			off = off + m[node]
-		end
-
-		# construct nrange
-		nrange = Dict{Int, UnitRange}()
-		off = 0
-		for node in nodes_in
-			nrange[node] = (off+1):(off+n[node])
-			off = off + n[node]
-		end
+		mrange = construct_range_vec(m, nodes_out)
+		nrange = construct_range_vec(n, nodes_in)
 
 		new(X, Y, nodes_out, nodes_in, mrange, nrange, m, n, M, N, p)
 	end
@@ -658,9 +652,26 @@ function TQSMatrix{T}(trans, inp, out, D, node_ordering) where {T <: Number}
 	return TQSMatrix{T}(spinners, node_ordering)
 end
 
+function determine_partition_sizes(T, nodes_out, nodes_in)
+	m = Dict{Int, Int}(node => T.m[node] for node in nodes_out)
+	n = Dict{Int, Int}(node => T.n[node] for node in nodes_in)
+	mrange = Dict{Int, UnitRange}()
+	off = 0
+	for node in Dbari
+		mrange[node] = (off+1):(off+m[node])
+		off = off + m[node]
+	end
+	nrange = Dict{Int, UnitRange}()
+	off = 0
+	for node in nodes_in
+		nrange[node] = (off+1):(off+n[node])
+		off = off + n[node]
+	end
 
+	return m, n, mrange, nrange
+end
 
-function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = Inf)
+function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, ρ_max = Inf)
 
 	# construct tree
 	@assert root in T.nodes
@@ -687,40 +698,25 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 			# parent and children
 			j, w = tree.parent[i], tree.children[i]
 			Dbari = tree.descendants_complement[i]
-			Dw_t = vcat([tree.descendants[w_t] for w_t in w]...)
+			inp_nodes = [vcat([tree.descendants[w_t] for w_t in w]...); i]
 
 			#construct F
-			F = hcat([getXblock(H[w_t][i], Dbari) for w_t in w]...)
-			F = [F T[Dbari, i]]
-
-
-			m = Dict{Int, Int}(node => T.m[node] for node in Dbari)
-			n = Dict{Int, Int}(node => T.n[node] for node in [Dw_t; i])
-			M = sum(m)
-			N = sum(n)
-			mrange = Dict{Int, UnitRange}()
-			off = 0
-			for node in Dbari
-				mrange[node] = (off+1):(off+m[node])
-				off = off + m[node]
-			end
-			# construct nrange
-			nrange = Dict{Int, UnitRange}()
-			off = 0
-			for node in nodes_in
-				nrange[node] = (off+1):(off+n[node])
-				off = off + n[node]
-			end
+			F = T[Dbari, i]
+			F = [hcat([getXblock(H[w_t][i], Dbari) for w_t in w]...) F]
 
 			# compute low rank factorization of F
-			X, Z = lowrankapprox(F, tol = tol, r_bound = r_bound)
+			X, Z, ρ = lowrankapprox(F; tol = tol, ρ_max = ρ_max)
 
-			# Set inp, trans, out
-			inp[i][j] = 0
-			out[j][i] = 0
+			# Set inp, trans & out, and form Y in the process
+			m, n, mrange, nrange = determine_partition_sizes(T, Dbari, inp_nodes)
+			out[j][i] = X[mrange[j], :]
+			Y = Array{eltype(T)}(undef, ρ, 0)
 			for w_t in w
-				trans[i][j, w_t] = 0
+				trans[i][j, w_t] = Z[:, nrange[w_t]]
+				Y = [Y trans[i][j, w_t] * H[w_t][i].Y]
 			end
+			inp[i][j] = Z[:, nrange[i]]
+			Y = [Y inp[i][j]]
 
 			# construct low rank factorization of Hankel block
 			H[i][j] = HankelFact(X, Y)
@@ -730,14 +726,42 @@ function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, r_bound = 
 	# Downsweep stage: from root to the leaves
 	for l ∈ 2:length(tree.levels)
 		for i in tree.levels[l]
-			#construct F
+			# parent and children
+			j = tree.parent[i]
+			k = tree.parent[j]
+			v = tree.siblings[i]
+			Di = tree.descendants[i]
+			inp_nodes = isnothing(k) ? [] : tree.descendants_complement[j]
+			inp_nodes = [inp_nodes; vcat([tree.descendants[v_t] for v_t in v]...); j]
 
+			#construct F
+			F = T[Di, j]
+			F = [hcat([getXblock(H[v_t][j], Di) for v_t in v]...) F]
+			if !isnothing(k)
+				F = [getXblock(H[k][j], Di) F]
+			end
 
 			# compute low rank factorization of F
+			X, Z, ρ = lowrankapprox(F; tol = tol, ρ_max = ρ_max)
 
-			# Set trans,inp, out
+			# Set trans,inp, out, and form Y in the process
+			m, n, mrange, nrange = determine_partition_sizes(T, Di, inp_nodes)
+			out[i][j] = X[mrange[i], :]
+			if isnothing(k)
+				Y = Array{eltype(T)}(undef, ρ, 0)
+			else
+				trans[j][i, k] = Z[:, nrange[k]]
+				Y = trans[j][i, k] * H[k][j].Y
+			end
+			for v_t in v
+				trans[j][i, v_t] = Z[:, nrange[v_t]]
+				Y = [Y trans[i][j, w_t] * H[v_t][j].Y]
+			end
+			inp[i][j] = Z[:, nrange[i]]
+			Y = [Y inp[i][j]]
 
-			# construct low rank factorization of Hankel block
+			# construct low-rank factorization of Hankel block
+			H[j][i] = HankelFact(X, Y)
 
 		end
 	end
@@ -757,3 +781,6 @@ end
 
 
 end
+
+
+
