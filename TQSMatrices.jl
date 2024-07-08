@@ -4,10 +4,11 @@ module TQSMatrices
 ###########
 # exports #
 ###########
-export ZeroMatrix,
-	Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, IndexedMatrix, is_a_tree
-export GIRS_has_no_bounce_back_operators, construct_tree, GraphPartitionedMatrix
-export get_block, get_hankelblock, StateGraph, TransGraph
+export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, IndexedMatrix
+export is_a_tree, GIRS_has_no_bounce_back_operators, construct_tree
+export GraphPartitionedMatrix, get_block, get_hankelblock, StateGraph, TransGraph
+export construct_range_vec, HankelFactorization, Xblock, Yblock
+export lowrankapprox
 
 ############
 # packages #
@@ -43,7 +44,7 @@ Base.:Matrix(A::ZeroMatrix) = zeros(eltype(A), A.m, A.n)
 IndexedVector{T <: Any} = Dict{Int, T}
 IndexedVector{T}(array, labels) where {T <: Any} = Dict{Int, T}(zip(labels, array))
 function IndexedVector{T}(v::IndexedVector) where {T <: Any}
-	return Dict{Int, T}(key => val for (key, val) in v)
+	return Dict{Int, T}(key => val for (key, val) ∈ v)
 end
 
 #############
@@ -53,7 +54,7 @@ end
 function construct_range_vec(node_sizes::IndexedVector{Int}, nodes)
 	ranges = IndexedVector{UnitRange}()
 	off = 0
-	for node in nodes
+	for node ∈ nodes
 		ranges[node] = (off+1):(off+node_sizes[node])
 		off = off + node_sizes[node]
 	end
@@ -61,12 +62,12 @@ function construct_range_vec(node_sizes::IndexedVector{Int}, nodes)
 end
 
 
-function construct_range_vec(node_sizes::Vector{Int})
+function construct_range_vec(node_sizes::Vector{Tuple{Int, Int}})
 	ranges = IndexedVector{UnitRange}()
 	off = 0
-	for k in eachindex(node_sizes)
-		ranges[k] = (off+1):(off+node_sizes[k])
-		off = off + node_sizes[k]
+	for k ∈ eachindex(node_sizes)
+		ranges[node_sizes[k][1]] = (off+1):(off+node_sizes[k][2])
+		off = off + node_sizes[k][2]
 	end
 	return ranges
 end
@@ -86,7 +87,7 @@ struct IndexedMatrix{T <: Any}
 		new{T}(
 			convert(Matrix{T}, array),
 			labels,
-			Dict(label => i for (i, label) in enumerate(labels)),
+			Dict(label => i for (i, label) ∈ enumerate(labels)),
 			size(array, 1)::Int,
 		)
 	end
@@ -100,7 +101,7 @@ function IndexedMatrix{T}(A::IndexedMatrix) where {T <: Any}     # to recast int
 end
 function IndexedMatrix{T}(labels::Vector{Int}) where {T <: Any} # creates an undefined IndexedMatrix
 	N = length(labels)
-	return IndexedMatrix{T}(Array{Matrix{Float64}}(undef, N, N), labels)
+	return IndexedMatrix{T}(Array{T}(undef, N, N), labels)
 end
 Base.:size(A::IndexedMatrix) = (A.N, A.N)
 Base.:size(A::IndexedMatrix, i) = size(A)[i]
@@ -133,10 +134,10 @@ struct GraphPartitionedMatrix{Scalar <: Number}
 		@assert sum(values(m)) == size(mat, 1)
 		@assert sum(values(n)) == size(mat, 2)
 		@assert length(Set(nodes)) == length(nodes)
-		@assert all([haskey(adjacency_list, node) for node in nodes])
+		@assert all([haskey(adjacency_list, node) for node ∈ nodes])
 		@assert length(keys(adjacency_list)) == length(nodes)
-		for neighbors in values(adjacency_list)
-			for n in neighbors
+		for neighbors ∈ values(adjacency_list)
+			for n ∈ neighbors
 				@assert haskey(adjacency_list, n)
 			end
 		end
@@ -164,13 +165,13 @@ Base.:getindex(A::GraphPartitionedMatrix, i::Int, j::Int) = A.mat[i, j]
 Base.eltype(A::GraphPartitionedMatrix) = typeof(A).parameters[1]
 # extract a block
 function get_block(A::GraphPartitionedMatrix, i, j)
-	rows = vcat([A.mrange[k] for k in i]...)
-	columns = vcat([A.nrange[k] for k in j]...)
+	rows = vcat([A.mrange[k] for k ∈ i]...)
+	columns = vcat([A.nrange[k] for k ∈ j]...)
 	return A.mat[rows, columns]
 end
 get_block(A::GraphPartitionedMatrix, i::Union{Int, Vector{Int}}) = get_block(A, i, i)
 function get_hankelblock(A::GraphPartitionedMatrix, j)
-	i = filter(x -> !(x in j), A.nodes)
+	i = filter(x -> !(x ∈ j), A.nodes)
 	return get_block(A, i, j)
 end
 
@@ -191,16 +192,16 @@ struct Spinner{Scalar <: Number}
 	p_out::IndexedVector{Int}
 
 	function Spinner{Scalar}(
-		id::Int,
-		neighbors::Vector{Int},
-		trans::IndexedMatrix{AbstractMatrix{Scalar}},
-		inp::IndexedVector{AbstractMatrix{Scalar}},
-		out::IndexedVector{AbstractMatrix{Scalar}},
-		D::AbstractMatrix{Scalar},
-		m::Int,
-		n::Int,
-		p_in::IndexedVector{Int},
-		p_out::IndexedVector{Int},
+		id,
+		neighbors,
+		trans,
+		inp,
+		out,
+		D,
+		m,
+		n,
+		p_in,
+		p_out,
 	) where {Scalar <: Number}
 
 		# spinners cannot have its own node id as neighbor
@@ -216,10 +217,10 @@ struct Spinner{Scalar <: Number}
 		# dimensions of D coincide with m and n
 		@assert size(D) == (m, n)
 		# operator dimension checks
-		@assert all([size(out[k]) == (m, p_in[k]) for k in keys(out)])
-		@assert all([size(inp[k]) == (p_out[k], n) for k in keys(inp)])
+		@assert all([size(out[k]) == (m, p_in[k]) for k ∈ keys(out)])
+		@assert all([size(inp[k]) == (p_out[k], n) for k ∈ keys(inp)])
 		@assert all([
-			size(trans[k, l]) == (p_out[k], p_in[l]) for k in neighbors, l in neighbors
+			size(trans[k, l]) == (p_out[k], p_in[l]) for k ∈ neighbors, l ∈ neighbors
 		])
 
 		new{Scalar}(id, neighbors, trans, inp, out, D, m, n, p_in, p_out)
@@ -227,17 +228,17 @@ struct Spinner{Scalar <: Number}
 
 end
 Base.:size(S::Spinner) = (S.m, S.n)
-IndexedVector{Spinner}(S) = Dict(s.id => s for s in S)
+IndexedVector{Spinner}(S) = Dict(s.id => s for s ∈ S)
 Base.eltype(x::Spinner) = typeof(x).parameters[1]
 
 
 # alternative constructor 1
 function Spinner{Scalar}(
 	id::Int,
-	trans::IndexedMatrix{AbstractMatrix{Scalar}},
-	inp::IndexedVector{AbstractMatrix{Scalar}},
-	out::IndexedVector{AbstractMatrix{Scalar}},
-	D::AbstractMatrix{Scalar},
+	trans,
+	inp,
+	out,
+	D,
 ) where {Scalar <: Number}
 	return Spinner{Scalar}(
 		id,
@@ -246,10 +247,10 @@ function Spinner{Scalar}(
 		inp,
 		out,
 		D,
-		size(D, 1),
-		size(D, 2),
-		Dict(j => size(c, 2) for (j, c) in out),
-		Dict(j => size(b, 1) for (j, b) in inp),
+		Base.:size(D, 1),
+		Base.:size(D, 2),
+		Dict(j => Base.:size(c, 2) for (j, c) ∈ out),
+		Dict(j => Base.:size(b, 1) for (j, b) ∈ inp),
 	)
 end
 
@@ -271,8 +272,8 @@ function Spinner{Scalar}(
 		convert(AbstractMatrix{Scalar}, D),
 		size(D, 1),
 		size(D, 2),
-		Dict(j => size(c, 2) for (j, c) in zip(neighbors, out)),
-		Dict(j => size(b, 1) for (j, b) in zip(neighbors, inp)),
+		Dict(j => size(c, 2) for (j, c) ∈ zip(neighbors, out)),
+		Dict(j => size(b, 1) for (j, b) ∈ zip(neighbors, inp)),
 	)
 end
 
@@ -281,12 +282,11 @@ end
 # Check if vector of spinners is a valid (infinite) GIRS representation #
 #########################################################################
 
-
 function GIRS_is_consistent(nodeset)
-	for node in values(nodeset)
-		for neighbor in node.neighbors
+	for node ∈ values(nodeset)
+		for neighbor ∈ node.neighbors
 			# node i is a neighbor of node j iff node j is a neighbor of node i
-			@assert node.id in nodeset[neighbor].neighbors
+			@assert node.id ∈ nodeset[neighbor].neighbors
 			# dimension consistency
 			@assert node.p_out[neighbor] == nodeset[neighbor].p_in[node.id]
 		end
@@ -303,7 +303,7 @@ function is_a_tree(adj_list)
 	# 1. no cycles
 	# 2. fully connected
 
-	visited = Dict(node => false for node in keys(adj_list))
+	visited = Dict(node => false for node ∈ keys(adj_list))
 	start_node = first(keys(adj_list))
 
 	# depth first search
@@ -312,7 +312,7 @@ function is_a_tree(adj_list)
 		node, prev = pop!(stack)
 		visited[node] = true
 
-		for neighbor in adj_list[node]
+		for neighbor ∈ adj_list[node]
 			if !visited[neighbor]
 				push!(stack, (neighbor, node))
 			elseif neighbor != prev
@@ -330,8 +330,8 @@ end
 ###############################################
 
 function GIRS_has_no_bounce_back_operators(nodeset)
-	for node in values(nodeset)
-		for i in node.neighbors
+	for node ∈ values(nodeset)
+		for i ∈ node.neighbors
 			if !isa(node.trans[i, i], ZeroMatrix)
 				return false
 			end
@@ -360,7 +360,7 @@ function construct_tree(adj_list, root)
 	# function assumes nodeset is a tree. Run first GIRS_is_tree
 
 	@assert haskey(adj_list, root)
-	not_yet_visited = Dict(node => true for node in keys(adj_list))
+	not_yet_visited = Dict(node => true for node ∈ keys(adj_list))
 
 	#breadth first search
 	parent = Dict{Int, Union{Int, Nothing}}()
@@ -371,8 +371,8 @@ function construct_tree(adj_list, root)
 	k = 1
 	while any(values(not_yet_visited))
 		next_level = []
-		for node in current_level
-			for neighbor in adj_list[node]
+		for node ∈ current_level
+			for neighbor ∈ adj_list[node]
 				if not_yet_visited[neighbor]
 					parent[neighbor] = node
 					push!(next_level, neighbor)
@@ -388,8 +388,8 @@ function construct_tree(adj_list, root)
 
 
 	# determine children
-	children = Dict{Int, Vector{Int}}(k => [] for k in keys(adj_list))
-	for k in keys(parent)
+	children = Dict{Int, Vector{Int}}(k => [] for k ∈ keys(adj_list))
+	for k ∈ keys(parent)
 		if !isnothing(parent[k])
 			push!(children[parent[k]], k)
 		end
@@ -397,10 +397,10 @@ function construct_tree(adj_list, root)
 
 
 	# determine siblings
-	siblings = Dict{Int, Vector{Int}}(k => [] for k in keys(adj_list))
-	for childrenset in values(children)
+	siblings = Dict{Int, Vector{Int}}(k => [] for k ∈ keys(adj_list))
+	for childrenset ∈ values(children)
 		if !isempty(childrenset)
-			for c in childrenset
+			for c ∈ childrenset
 				siblings[c] = filter(x -> x != c, childrenset)
 			end
 		end
@@ -408,11 +408,11 @@ function construct_tree(adj_list, root)
 
 
 	# determine descendant and descendants complement
-	descendants = Dict{Int, Vector{Int}}(k => [k] for k in keys(adj_list))
-	for k in keys(descendants)
+	descendants = Dict{Int, Vector{Int}}(k => [k] for k ∈ keys(adj_list))
+	for k ∈ keys(descendants)
 		function recursively_add_children!(x)
 			if !isempty(children[x])
-				for l in children[x]
+				for l ∈ children[x]
 					push!(descendants[k], l)
 					recursively_add_children!(l)
 				end
@@ -422,7 +422,7 @@ function construct_tree(adj_list, root)
 	end
 	nodes = keys(adj_list)
 	descendants_complement =
-		Dict{Int, Vector{Int}}(k => collect(setdiff(nodes, descendants[k])) for k in nodes)
+		Dict{Int, Vector{Int}}(k => collect(setdiff(nodes, descendants[k])) for k ∈ nodes)
 
 	return Tree(
 		adj_list,
@@ -463,19 +463,19 @@ struct TQSMatrix{Scalar <: Number}
 
 		# correctness of input
 		@assert all(s -> eltype(s) == Scalar, values(spinners))
-		@assert all([spinners[k].id == k for k in keys(spinners)])
+		@assert all([spinners[k].id == k for k ∈ keys(spinners)])
 		@assert length(spinners) == length(node_ordering)
 		@assert Set(keys(spinners)) == Set(node_ordering)
 
 		# checks spinners generate a valid TQS matrix
 		@assert GIRS_is_consistent(spinners)
 		@assert GIRS_has_no_bounce_back_operators(spinners)
-		adjacency_list = Dict(s.id => s.neighbors for s in values(spinners))
+		adjacency_list = Dict(s.id => s.neighbors for s ∈ values(spinners))
 		@assert is_a_tree(adjacency_list)
 
 		K = length(node_ordering)
-		m = Dict(s.id => s.m for s in values(spinners))
-		n = Dict(s.id => s.n for s in values(spinners))
+		m = Dict(s.id => s.m for s ∈ values(spinners))
+		n = Dict(s.id => s.n for s ∈ values(spinners))
 		mrange = construct_range_vec(m, node_ordering)
 		nrange = construct_range_vec(n, node_ordering)
 		M = sum(values(m))
@@ -500,10 +500,10 @@ StateGraph{Scalar <: Number} = Dict{Int, Dict{Int, Vector{Scalar}}}
 function StateGraph{Scalar}(T::TQSMatrix) where {Scalar <: Number}
 	# creates a Stategraph with zero entries
 	stategraph = StateGraph{Scalar}()
-	for (node, neighbors) in T.adjacency_list
+	for (node, neighbors) ∈ T.adjacency_list
 		stategraph[node] = Dict(
 			neighbor => zeros(Scalar, T.spinners[node].p_in[neighbor]) for
-			neighbor in neighbors
+			neighbor ∈ neighbors
 		)
 	end
 	return stategraph
@@ -521,16 +521,16 @@ function Base.:*(T::TQSMatrix, x::Vector, tree::Tree)
 	h = StateGraph{type_b}(T)
 
 	# diagonal stage
-	for node in eachindex(T.node_ordering)
+	for node ∈ eachindex(T.node_ordering)
 		b[T.mrange[node]] = T.spinners[node].D * x[T.nrange[node]]
 	end
 
 	# Upsweep stage: from leaves to the root
 	for l ∈ length(tree.levels):-1:2
-		for i in tree.levels[l]
+		for i ∈ tree.levels[l]
 			j = tree.parent[i]
 			h[j][i] += T.spinners[i].inp[j] * x[T.nrange[i]]   #input contribution
-			for w in tree.children[i]                             #children state contribution
+			for w ∈ tree.children[i]                             #children state contribution
 				h[j][i] += T.spinners[i].trans[j, w] * h[i][w]
 			end
 			b[T.mrange[j]] += T.spinners[j].out[i] * h[j][i]
@@ -539,10 +539,10 @@ function Base.:*(T::TQSMatrix, x::Vector, tree::Tree)
 
 	# Downsweep stage: from root to the leaves
 	for l ∈ 2:length(tree.levels)
-		for i in tree.levels[l]
+		for i ∈ tree.levels[l]
 			j = tree.parent[i]
 			h[i][j] += T.spinners[j].inp[i] * x[T.nrange[j]]    # input contribution
-			for s in tree.siblings[i]                              # sibling contribution
+			for s ∈ tree.siblings[i]                              # sibling contribution
 				h[i][j] += T.spinners[j].trans[i, s] * h[j][s]
 			end
 			k = tree.parent[j]
@@ -573,14 +573,19 @@ end
 # low rank approximation #
 ##########################
 
-function lowrankapprox(A; tol = 1E-15, ρ_max = Inf)
+function lowrankapprox(A, tol, ρ_max)
 	U, S, V = svd(A)
-	ρ = findfirst(x -> x < tol, S)
+	ρ = findfirst(x -> x < tol, S / S[1])
+	if isnothing(ρ)
+		ρ = length(S)
+	else
+		ρ -= 1
+	end
 	if ρ > ρ_max
 		ρ = ρ_max
 	end
-	X = U[:, 1:k] * Diagonal(S[1:k])
-	Y = V[:, 1:k]'
+	X = U[:, 1:ρ] * Diagonal(S[1:ρ])
+	Y = V[:, 1:ρ]'
 	return X, Y, ρ
 end
 
@@ -589,45 +594,23 @@ end
 # Hankel factorization #
 ########################
 
-
-struct HankelFact
+struct HankelFactorization
 	X::AbstractMatrix
 	Y::AbstractMatrix
-	nodes_out::Vector{Int}
-	nodes_in::Vector{Int}
-	# mapping between nodes and matrix entries
-	mrange::IndexedVector{UnitRange}
-	nrange::IndexedVector{UnitRange}
-	# dimensions
-	m::IndexedVector{Int}
-	n::IndexedVector{Int}
-	M::Int
-	N::Int
-	p::Int   # "size of factorization" - if X and Y are full rank, p is also the rank
-
-	function HankelFact(X, Y, nodes_out, nodes_in, m, n)
-		@assert length(nodes_out) == length(m)
-		@assert length(nodes_in) == length(n)
-		@assert size(X, 1) == sum(m)
-		@assert size(Y, 2) == sum(n)
-		@assert size(X, 2) == size(Y, 1)
-
-		# M, N, p
-		M = sum(m)
-		N = sum(n)
-		p = size(X, 2)
-
-		# m and n
-		m = IndexedVector{Int}(m, nodes_out)
-		n = IndexedVector{Int}(n, nodes_in)
-
-		# construct mrange
-		mrange = construct_range_vec(m, nodes_out)
-		nrange = construct_range_vec(n, nodes_in)
-
-		new(X, Y, nodes_out, nodes_in, mrange, nrange, m, n, M, N, p)
-	end
+	in_nodes::Vector{Int}
+	in_ranges::IndexedVector{UnitRange}
+	out_nodes::Vector{Int}
+	out_ranges::IndexedVector{UnitRange}
 end
+
+function get_block(A::GraphPartitionedMatrix, i, j)
+	rows = vcat([A.mrange[k] for k ∈ i]...)
+	columns = vcat([A.nrange[k] for k ∈ j]...)
+	return A.mat[rows, columns]
+end
+
+Xblock(H::HankelFactorization, i) = vcat([H.X[H.out_ranges[k], :] for k ∈ i]...)
+Yblock(H::HankelFactorization, j) = hcat([H.Y[:, H.in_ranges[k]] for k ∈ j]...)
 
 
 
@@ -636,8 +619,8 @@ end
 ####################
 TransGraph{Scalar <: Number} = Dict{Int, IndexedMatrix{Scalar}}
 function TransGraph{Scalar}(T::GraphPartitionedMatrix) where {Scalar <: Number}
-	transgraph = Dict{Int, IndexedMatrix{Scalar}}(
-		k => IndexedMatrix{Scalar}(v) for (k, v) in T.adjacency_list
+	transgraph = Dict{Int, IndexedMatrix{AbstractMatrix{Scalar}}}(
+		k => IndexedMatrix{AbstractMatrix{Scalar}}(v) for (k, v) ∈ T.adjacency_list
 	)
 	return transgraph
 end
@@ -646,24 +629,24 @@ end
 #n alternative constructor for TQS matrix
 function TQSMatrix{T}(trans, inp, out, D, node_ordering) where {T <: Number}
 	spinners = Dict()
-	for k in node_ordering
+	for k ∈ node_ordering
 		spinners[k] = Spinner{T}(k, trans[k], inp[k], out[k], D[k])
 	end
 	return TQSMatrix{T}(spinners, node_ordering)
 end
 
 function determine_partition_sizes(T, nodes_out, nodes_in)
-	m = Dict{Int, Int}(node => T.m[node] for node in nodes_out)
-	n = Dict{Int, Int}(node => T.n[node] for node in nodes_in)
+	m = Dict{Int, Int}(node => T.m[node] for node ∈ nodes_out)
+	n = Dict{Int, Int}(node => T.n[node] for node ∈ nodes_in)
 	mrange = Dict{Int, UnitRange}()
 	off = 0
-	for node in Dbari
+	for node ∈ Dbari
 		mrange[node] = (off+1):(off+m[node])
 		off = off + m[node]
 	end
 	nrange = Dict{Int, UnitRange}()
 	off = 0
-	for node in nodes_in
+	for node ∈ nodes_in
 		nrange[node] = (off+1):(off+n[node])
 		off = off + n[node]
 	end
@@ -671,105 +654,127 @@ function determine_partition_sizes(T, nodes_out, nodes_in)
 	return m, n, mrange, nrange
 end
 
-function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol = 1E-15, ρ_max = Inf)
+function TQSMatrix(T::GraphPartitionedMatrix, root::Int, tol, ρ_max)
 
 	# construct tree
-	@assert root in T.nodes
+	@assert root ∈ T.nodes
 	tree = construct_tree(T, root)
 
 	# Initialize generators
-	D = Dict{Int, Matrix{eltype(T)}}(
-		node => get_block(T, node) for node in eachindex(T.node_ordering)
-	)
+	D = Dict{Int, Matrix{eltype(T)}}(node => get_block(T, node) for node ∈ T.nodes)
 	trans = TransGraph{eltype(T)}(T)
 	inp = Dict{Int, Dict{Int, Matrix{eltype(T)}}}(
-		k => Dict{Int, Matrix{eltype(T)}}() for k in T.nodes
+		k => Dict{Int, Matrix{eltype(T)}}() for k ∈ T.nodes
 	)
 	out = Dict{Int, Dict{Int, Matrix{eltype(T)}}}(
-		k => Dict{Int, Matrix{eltype(T)}}() for k in T.nodes
+		k => Dict{Int, Matrix{eltype(T)}}() for k ∈ T.nodes
 	)
 
 	# generator skeleton hankel graph
-	H = Dict(k => Dict() for k in T.nodes)
+	H = Dict{Tuple{Int, Int}, HankelFactorization}()
+	ρ = Dict{Tuple{Int, Int}, Int}()
 
 	# Upsweep stage: from leaves to the root
 	for l ∈ length(tree.levels):-1:2
-		for i in tree.levels[l]
+		for i ∈ tree.levels[l]
+
 			# parent and children
 			j, w = tree.parent[i], tree.children[i]
-			Dbari = tree.descendants_complement[i]
-			inp_nodes = [vcat([tree.descendants[w_t] for w_t in w]...); i]
+
+			# out and in nodes of the Hankel block H[(i,j)]
+			in_nodes = [vcat([H[(w_t, i)].in_nodes for w_t ∈ w]...); i]
+			in_ranges = construct_range_vec(T.n, in_nodes)
+			out_nodes = tree.descendants_complement[i]
+			out_ranges = construct_range_vec(T.m, out_nodes)
 
 			#construct F
-			F = T[Dbari, i]
-			F = [hcat([getXblock(H[w_t][i], Dbari) for w_t in w]...) F]
+			F = get_block(T, out_nodes, i)
+			F_partition_sizes = [(i, T.n[i])]
+			if !isempty(w)
+				F = [hcat([Xblock(H[(w_t, i)], out_nodes) for w_t ∈ w]...) F]
+				prepend!(F_partition_sizes, [(w_t, ρ[(w_t, i)]) for w_t ∈ w])
+			end
+			Frange = construct_range_vec(F_partition_sizes)
 
-			# compute low rank factorization of F
-			X, Z, ρ = lowrankapprox(F; tol = tol, ρ_max = ρ_max)
+			# compute low-rank factorization of F
+			X, Z, ρ[(i, j)] = lowrankapprox(F, tol, ρ_max)
 
 			# Set inp, trans & out, and form Y in the process
-			m, n, mrange, nrange = determine_partition_sizes(T, Dbari, inp_nodes)
-			out[j][i] = X[mrange[j], :]
-			Y = Array{eltype(T)}(undef, ρ, 0)
-			for w_t in w
-				trans[i][j, w_t] = Z[:, nrange[w_t]]
-				Y = [Y trans[i][j, w_t] * H[w_t][i].Y]
+			out[j][i] = X[out_ranges[j], :]
+			Y = Array{eltype(T)}(undef, ρ[(i, j)], 0)
+			for w_t ∈ w
+				trans[i][j, w_t] = Z[:, Frange[w_t]]
+				Y = [Y trans[i][j, w_t] * H[(w_t, i)].Y]
 			end
-			inp[i][j] = Z[:, nrange[i]]
+			inp[i][j] = Z[:, Frange[i]]
 			Y = [Y inp[i][j]]
 
-			# construct low rank factorization of Hankel block
-			H[i][j] = HankelFact(X, Y)
+			# form hankel factorization of the Hankel block H[(i,j)]
+			H[(i, j)] = HankelFactorization(X, Y, in_nodes, in_ranges, out_nodes, out_ranges)
 		end
 	end
 
 	# Downsweep stage: from root to the leaves
 	for l ∈ 2:length(tree.levels)
-		for i in tree.levels[l]
+		for i ∈ tree.levels[l]
 			# parent and children
 			j = tree.parent[i]
 			k = tree.parent[j]
 			v = tree.siblings[i]
-			Di = tree.descendants[i]
-			inp_nodes = isnothing(k) ? [] : tree.descendants_complement[j]
-			inp_nodes = [inp_nodes; vcat([tree.descendants[v_t] for v_t in v]...); j]
+
+			# out and in nodes of the Hankel block H[(j,i)]
+			in_nodes = [isnothing(k) ? [] : tree.descendants_complement[j];
+				vcat([tree.descendants[v_t] for v_t ∈ v]...);
+				j]
+			in_ranges = construct_range_vec(T.n, in_nodes)
+			out_nodes = tree.descendants[i]
+			out_ranges = construct_range_vec(T.m, out_nodes)
 
 			#construct F
-			F = T[Di, j]
-			F = [hcat([getXblock(H[v_t][j], Di) for v_t in v]...) F]
-			if !isnothing(k)
-				F = [getXblock(H[k][j], Di) F]
+			F = get_block(T, out_nodes, j)
+			F_partition_sizes = [(j, T.n[j])]
+			if !isempty(v)
+				F = [hcat([Xblock(H[(v_t, j)], out_nodes) for v_t ∈ v]...) F]
+				prepend!(F_partition_sizes, [(v_t, ρ[(v_t, j)]) for v_t ∈ v])
 			end
+			if !isnothing(k)
+				F = [Xblock(H[(k, j)], out_nodes) F]
+				prepend!(F_partition_sizes, [(k, ρ[(k, j)])])
+			end
+			Frange = construct_range_vec(F_partition_sizes)
 
 			# compute low rank factorization of F
-			X, Z, ρ = lowrankapprox(F; tol = tol, ρ_max = ρ_max)
+			X, Z, ρ[(j, i)] = lowrankapprox(F, tol, ρ_max)
 
 			# Set trans,inp, out, and form Y in the process
-			m, n, mrange, nrange = determine_partition_sizes(T, Di, inp_nodes)
-			out[i][j] = X[mrange[i], :]
+			out[i][j] = X[out_ranges[i], :]
 			if isnothing(k)
-				Y = Array{eltype(T)}(undef, ρ, 0)
+				Y = Array{eltype(T)}(undef, ρ[(j, i)], 0)
 			else
-				trans[j][i, k] = Z[:, nrange[k]]
-				Y = trans[j][i, k] * H[k][j].Y
+				trans[j][i, k] = Z[:, Frange[k]]
+				Y = trans[j][i, k] * H[(k, j)].Y
 			end
-			for v_t in v
-				trans[j][i, v_t] = Z[:, nrange[v_t]]
-				Y = [Y trans[i][j, w_t] * H[v_t][j].Y]
+			for v_t ∈ v
+				trans[j][i, v_t] = Z[:, Frange[v_t]]
+				Y = [Y trans[j][i, v_t] * H[(v_t, j)].Y]
 			end
-			inp[i][j] = Z[:, nrange[i]]
-			Y = [Y inp[i][j]]
+			inp[j][i] = Z[:, Frange[j]]
+			Y = [Y inp[j][i]]
 
-			# construct low-rank factorization of Hankel block
-			H[j][i] = HankelFact(X, Y)
-
+			# form hankel factorization of the Hankel block H[(j,i)]
+			H[(j, i)] = HankelFactorization(X, Y, in_nodes, in_ranges, out_nodes, out_ranges)
 		end
 	end
 
+	# fill diagonals of trans with zero matrices
+	for (i, tr) ∈ trans
+		for s ∈ tr.labels
+			tr[s, s] = ZeroMatrix{eltype(T)}(ρ[(i, s)], ρ[(s, i)])
+		end
+	end
 
 	# construct TQS matrix (create alternative constructor!)
-	T_TQS = TQSMatrix(trans, inp, out, D, T.nodes)
-
+	T_TQS = TQSMatrix{eltype(T)}(trans, inp, out, D, T.nodes)
 
 	return T_TQS, tree
 
@@ -778,6 +783,8 @@ end
 #############
 # TQS solve #
 #############
+
+
 
 
 end

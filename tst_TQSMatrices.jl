@@ -4,20 +4,44 @@ using LinearAlgebra
 using Test
 
 
+################################
+# Test: low rank approximation #
+###############################
+
+X = rand(15, 5)
+Y = rand(5, 15)
+A = X * Y
+
+tol = 1E-12
+ρ_max = Inf
+U, V, ρ = lowrankapprox(A, tol, ρ_max);
+
+@test U*V ≈ A
+@test ρ == 5
+
+################################
+# Test: construct range vector #
+################################
+
+node_sizes = Dict(4 => 4, 2 => 5, 1 => 6)
+nodes = [1, 2, 4]
+node_sizes2 = [(1, 6), (2, 5), (4, 4)]
+@test construct_range_vec(node_sizes, nodes) == construct_range_vec(node_sizes2)
+
+
 #######################
 # Test: IndexedVector #
 #######################
 
 neighbors = [4, 5, 6]
-inp = [rand(4, 2),
-	rand(4, 2),
-	nothing];
+inp = [rand(4, 2), rand(4, 2), nothing];
 inp_indexed = IndexedVector{Union{Nothing, AbstractMatrix{Float64}}}(inp, neighbors)
 B = rand(4, 2)
 inp_indexed[6] = B[:, :]
 B[1, 1] = 4
 @test B[1, 1] != inp_indexed[6][1, 1]
-@test typeof(IndexedVector{AbstractMatrix{Float64}}(inp_indexed)) == IndexedVector{AbstractMatrix{Float64}}
+@test typeof(IndexedVector{AbstractMatrix{Float64}}(inp_indexed)) ==
+	  IndexedVector{AbstractMatrix{Float64}}
 
 size(rand(4, 2))
 
@@ -45,11 +69,12 @@ B[1, 1] = 4
 # fill-in unfilled entry
 trans_indexed[4, 4] = rand(3, 3)
 # "recast" into an indexedmatrix with type parameter AbstractMatrix{Float64} (so no union with Nothing)
-@test typeof(IndexedMatrix{AbstractMatrix{Float64}}(trans_indexed)) == IndexedMatrix{AbstractMatrix{Float64}}
+@test typeof(IndexedMatrix{AbstractMatrix{Float64}}(trans_indexed)) ==
+	  IndexedMatrix{AbstractMatrix{Float64}}
 
 # create an undefined IndexedMatrix
 IndexedMatrix{Matrix{Float64}}(neighbors)
-
+IndexedMatrix{Matrix{ComplexF64}}(neighbors)
 
 
 #################################################
@@ -82,24 +107,39 @@ A = GraphPartitionedMatrix(mat, nodes, m, n, adjacency_list)
 @test all([A.n[nodes[k]] == n[k] for k in eachindex(nodes)])
 @test all([A.mrange[nodes[k]] == tmp_m[k]+1:tmp_m[k+1] for k in eachindex(nodes)])
 @test all([A.nrange[nodes[k]] == tmp_n[k]+1:tmp_n[k+1] for k in eachindex(nodes)])
-@test all([get_block(A, nodes[k], nodes[l]) == A.mat[tmp_m[k]+1:tmp_m[k+1], tmp_n[l]+1:tmp_n[l+1]] for k in eachindex(nodes), l in eachindex(nodes)])
+@test all([
+	get_block(A, nodes[k], nodes[l]) == A.mat[tmp_m[k]+1:tmp_m[k+1], tmp_n[l]+1:tmp_n[l+1]]
+	for k in eachindex(nodes), l in eachindex(nodes)
+])
 nodeset_in = rand(nodes)
 nodeset_out = rand(nodes, 2)
-@test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_block(A, nodeset_out, nodeset_in) == A.mat[
+	vcat([A.mrange[k] for k in nodeset_out]...),
+	vcat([A.nrange[k] for k in nodeset_in]...),
+]
 nodeset_in = rand(nodes, 2)
 nodeset_out = rand(nodes)
-@test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_block(A, nodeset_out, nodeset_in) == A.mat[
+	vcat([A.mrange[k] for k in nodeset_out]...),
+	vcat([A.nrange[k] for k in nodeset_in]...),
+]
 
 nodeset_in = rand(nodes, 2)
 nodeset_out = rand(nodes, 2)
-@test get_block(A, nodeset_out, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_block(A, nodeset_out, nodeset_in) == A.mat[
+	vcat([A.mrange[k] for k in nodeset_out]...),
+	vcat([A.nrange[k] for k in nodeset_in]...),
+]
 nodeset_in = [2 3]
 nodeset_out = [1, 4, 5]
-@test get_hankelblock(A, nodeset_in) == A.mat[vcat([A.mrange[k] for k in nodeset_out]...), vcat([A.nrange[k] for k in nodeset_in]...)]
+@test get_hankelblock(A, nodeset_in) == A.mat[
+	vcat([A.mrange[k] for k in nodeset_out]...),
+	vcat([A.nrange[k] for k in nodeset_in]...),
+]
 
 # create a TransGraph
 TransGraph{Float64}(A)
-
+TransGraph{ComplexF64}(A)
 ####################################
 # Test: construct spinner matrices #
 ####################################
@@ -143,9 +183,7 @@ trans = Matrix(undef, 3, 3);
 trans[1, 1], trans[1, 2], trans[1, 3] = ZeroMatrix(p12, p21), rand(p12, p31), rand(p12, p61);
 trans[2, 1], trans[2, 2], trans[2, 3] = rand(p13, p21), ZeroMatrix(p13, p31), rand(p13, p61);
 trans[3, 1], trans[3, 2], trans[3, 3] = rand(p16, p21), rand(p16, p31), ZeroMatrix(p16, p61);
-inp = [rand(p12, n1),
-	rand(p13, n1),
-	rand(p16, n1)];
+inp = [rand(p12, n1), rand(p13, n1), rand(p16, n1)];
 out = [rand(m1, p21), rand(m1, p31), rand(m1, p61)];
 D = rand(m1, n1);
 node1 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
@@ -220,9 +258,7 @@ trans = Matrix(undef, 3, 3);
 trans[1, 1], trans[1, 2], trans[1, 3] = ZeroMatrix(p61, p16), rand(p61, p46), rand(p61, p56);
 trans[2, 1], trans[2, 2], trans[2, 3] = rand(p64, p16), ZeroMatrix(p64, p46), rand(p64, p56);
 trans[3, 1], trans[3, 2], trans[3, 3] = rand(p65, p16), rand(p65, p46), ZeroMatrix(p65, p56);
-inp = [rand(p61, n6),
-	rand(p64, n6),
-	rand(p65, n6)];
+inp = [rand(p61, n6), rand(p64, n6), rand(p65, n6)];
 out = [rand(m6, p16), rand(m6, p46), rand(m6, p56)];
 D = rand(m6, n6);
 node6 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
@@ -273,8 +309,7 @@ neighbors = [2, 4];
 trans = Matrix(undef, 2, 2);
 trans[1, 1], trans[1, 2] = ZeroMatrix(p12, p21), rand(p12, p41)
 trans[2, 1], trans[2, 2] = rand(p14, p21), ZeroMatrix(p14, p41)
-inp = [rand(p12, n1),
-	rand(p14, n1)];
+inp = [rand(p12, n1), rand(p14, n1)];
 out = [rand(m1, p21), rand(m1, p41)];
 D = rand(m1, n1);
 
@@ -291,9 +326,7 @@ trans = Matrix(undef, 3, 3);
 trans[1, 1], trans[1, 2], trans[1, 3] = ZeroMatrix(p21, p12), rand(p21, p52), rand(p21, p32);
 trans[2, 1], trans[2, 2], trans[2, 3] = rand(p25, p12), ZeroMatrix(p25, p52), rand(p25, p32);
 trans[3, 1], trans[3, 2], trans[3, 3] = rand(p23, p12), rand(p23, p52), ZeroMatrix(p23, p32);
-inp = [rand(p21, m2),
-	rand(p25, m2),
-	rand(p23, m2)];
+inp = [rand(p21, m2), rand(p25, m2), rand(p23, m2)];
 out = [rand(n2, p12), rand(n2, p52), rand(n2, p32)];
 D = rand(n2, m2);
 node2 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
@@ -303,14 +336,12 @@ node2 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 @test node2.out[1] == out[1]
 @test node2.D == D
 
-
 id = 3;
 neighbors = [2, 4];
 trans = Matrix(undef, 2, 2);
 trans[1, 1], trans[1, 2] = ZeroMatrix(p32, p23), rand(p32, p43)
 trans[2, 1], trans[2, 2] = rand(p34, p23), ZeroMatrix(p34, p43)
-inp = [rand(p32, m3),
-	rand(p34, m3)];
+inp = [rand(p32, m3), rand(p34, m3)];
 out = [rand(n3, p23), rand(n3, p43)];
 D = rand(n3, m3);
 node3 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
@@ -320,14 +351,12 @@ node3 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 @test node3.out[2] == out[1]
 @test node3.D == D
 
-
 id = 4;
 neighbors = [1, 3];
 trans = Matrix(undef, 2, 2);
 trans[1, 1], trans[1, 2] = rand(p41, p14), rand(p41, p34)
 trans[2, 1], trans[2, 2] = rand(p43, p14), ZeroMatrix(p43, p34)
-inp = [rand(p41, m4),
-	rand(p43, m4)];
+inp = [rand(p41, m4), rand(p43, m4)];
 out = [rand(n4, p14), rand(n4, p34)];
 D = rand(n4, m4);
 node4 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
@@ -337,7 +366,6 @@ node4 = Spinner{Float64}(id, neighbors, trans, inp, out, D);
 @test node4.inp[3] == inp[2]
 @test node4.out[1] == out[1]
 @test node4.D == D
-
 
 id = 5;
 neighbors = [2];
@@ -447,15 +475,28 @@ tree = construct_tree(adj_list_nodeset_acyclic, 2)
 #              |
 #         4 -- 6 -- 5
 
+node_ordering = [1, 2, 3, 4, 5, 6]
+T = TQSMatrix(nodeset_acyclic, node_ordering);
 
-T = TQSMatrix(nodeset_acyclic, [1, 2, 3, 4, 5, 6]);
+trans_acyclic = Dict{Int, IndexedMatrix{AbstractMatrix{eltype(T)}}}(
+	k => node.trans for (k, node) in nodeset_acyclic
+);
+inp_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(
+	k => node.inp for (k, node) in nodeset_acyclic
+);
+out_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(
+	k => node.out for (k, node) in nodeset_acyclic
+);
+D_acyclic =
+	Dict{Int, AbstractMatrix{eltype(T)}}(k => node.D for (k, node) in nodeset_acyclic);
 
-trans_acyclic = Dict{Int, IndexedMatrix{AbstractMatrix{eltype(T)}}}(k => node.trans for (k, node) in nodeset_acyclic);
-inp_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.inp for (k, node) in nodeset_acyclic);
-out_acyclic = Dict{Int, IndexedVector{AbstractMatrix{eltype(T)}}}(k => node.out for (k, node) in nodeset_acyclic);
-D_acyclic = Dict{Int, AbstractMatrix{eltype(T)}}(k => node.D for (k, node) in nodeset_acyclic);
-
-T_alternative = TQSMatrix{eltype(T)}(trans_acyclic, inp_acyclic, out_acyclic, D_acyclic, [1, 2, 3, 4, 5, 6]);
+T_alternative = TQSMatrix{eltype(T)}(
+	trans_acyclic,
+	inp_acyclic,
+	out_acyclic,
+	D_acyclic,
+	[1, 2, 3, 4, 5, 6],
+);
 
 
 T11 = T.spinners[1].D                                                                   #                1 
@@ -468,28 +509,60 @@ T61 = T.spinners[6].out[1] * T.spinners[1].inp[6]                   #           
 T12 = T.spinners[1].out[2] * T.spinners[2].inp[1]                 #           1 <- 2
 T22 = T.spinners[2].D    #                2
 T32 = T.spinners[3].out[1] * T.spinners[1].trans[3, 2] * T.spinners[2].inp[1]                 #      3 <- 1 <- 2
-T42 = T.spinners[4].out[6] * T.spinners[6].trans[4, 1] * T.spinners[1].trans[6, 2] * T.spinners[2].inp[1]   # 4 <- 6 <- 1 <- 2
-T52 = T.spinners[5].out[6] * T.spinners[6].trans[5, 1] * T.spinners[1].trans[6, 2] * T.spinners[2].inp[1]   # 6 <- 1 <- 1 <- 2
+T42 =
+	T.spinners[4].out[6] *
+	T.spinners[6].trans[4, 1] *
+	T.spinners[1].trans[6, 2] *
+	T.spinners[2].inp[1]   # 4 <- 6 <- 1 <- 2
+T52 =
+	T.spinners[5].out[6] *
+	T.spinners[6].trans[5, 1] *
+	T.spinners[1].trans[6, 2] *
+	T.spinners[2].inp[1]   # 6 <- 1 <- 1 <- 2
 T62 = T.spinners[6].out[1] * T.spinners[1].trans[6, 2] * T.spinners[2].inp[1]                 #      6 <- 1 <- 2
 
 
 T13 = T.spinners[1].out[3] * T.spinners[3].inp[1]                 #           1 <- 3 
 T23 = T.spinners[2].out[1] * T.spinners[1].trans[2, 3] * T.spinners[3].inp[1]                 #      2 <- 1 <- 3
 T33 = T.spinners[3].D    #                3
-T43 = T.spinners[4].out[6] * T.spinners[6].trans[4, 1] * T.spinners[1].trans[6, 3] * T.spinners[3].inp[1]                  # 4 <- 6 <- 1 <- 3  
-T53 = T.spinners[5].out[6] * T.spinners[6].trans[5, 1] * T.spinners[1].trans[6, 3] * T.spinners[3].inp[1]                 # 5 <- 6 <- 1 <- 3  
+T43 =
+	T.spinners[4].out[6] *
+	T.spinners[6].trans[4, 1] *
+	T.spinners[1].trans[6, 3] *
+	T.spinners[3].inp[1]                  # 4 <- 6 <- 1 <- 3  
+T53 =
+	T.spinners[5].out[6] *
+	T.spinners[6].trans[5, 1] *
+	T.spinners[1].trans[6, 3] *
+	T.spinners[3].inp[1]                 # 5 <- 6 <- 1 <- 3  
 T63 = T.spinners[6].out[1] * T.spinners[1].trans[6, 3] * T.spinners[3].inp[1]                    #      6 <- 1 <- 3
 
 T14 = T.spinners[1].out[6] * T.spinners[6].trans[1, 4] * T.spinners[4].inp[6]                  #      1 <- 6 <- 4 
-T24 = T.spinners[2].out[1] * T.spinners[1].trans[2, 6] * T.spinners[6].trans[1, 4] * T.spinners[4].inp[6]  # 2 <- 1 <- 6 <- 4 
-T34 = T.spinners[3].out[1] * T.spinners[1].trans[3, 6] * T.spinners[6].trans[1, 4] * T.spinners[4].inp[6]                # 3 <- 1 <- 6 <- 4
+T24 =
+	T.spinners[2].out[1] *
+	T.spinners[1].trans[2, 6] *
+	T.spinners[6].trans[1, 4] *
+	T.spinners[4].inp[6]  # 2 <- 1 <- 6 <- 4 
+T34 =
+	T.spinners[3].out[1] *
+	T.spinners[1].trans[3, 6] *
+	T.spinners[6].trans[1, 4] *
+	T.spinners[4].inp[6]                # 3 <- 1 <- 6 <- 4
 T44 = T.spinners[4].D    #                4
 T54 = T.spinners[5].out[6] * T.spinners[6].trans[5, 4] * T.spinners[4].inp[6]                 #      5 <- 6 <- 4
 T64 = T.spinners[6].out[4] * T.spinners[4].inp[6]                  #           6 <- 4    
 
 T15 = T.spinners[1].out[6] * T.spinners[6].trans[1, 5] * T.spinners[5].inp[6]                 #      1 <- 6 <- 5
-T25 = T.spinners[2].out[1] * T.spinners[1].trans[2, 6] * T.spinners[6].trans[1, 5] * T.spinners[5].inp[6]                # 2 <- 1 <- 6 <- 5
-T35 = T.spinners[3].out[1] * T.spinners[1].trans[3, 6] * T.spinners[6].trans[1, 5] * T.spinners[5].inp[6]                 # 3 <- 1 <- 6 <- 5 
+T25 =
+	T.spinners[2].out[1] *
+	T.spinners[1].trans[2, 6] *
+	T.spinners[6].trans[1, 5] *
+	T.spinners[5].inp[6]                # 2 <- 1 <- 6 <- 5
+T35 =
+	T.spinners[3].out[1] *
+	T.spinners[1].trans[3, 6] *
+	T.spinners[6].trans[1, 5] *
+	T.spinners[5].inp[6]                 # 3 <- 1 <- 6 <- 5 
 T45 = T.spinners[4].out[6] * T.spinners[6].trans[4, 5] * T.spinners[5].inp[6]                  #      4 <- 6 <- 5 
 T55 = T.spinners[5].D    #                5
 T65 = T.spinners[6].out[5] * T.spinners[5].inp[6]                 #           6 <- 5
@@ -502,16 +575,24 @@ T56 = T.spinners[5].out[6] * T.spinners[6].inp[5]                    #          
 T66 = T.spinners[6].D    #                6 
 
 
-Tdense =
-	[                                      T11 T12 T13 T14 T15 T16
-		T21 T22 T23 T24 T25 T26
-		T31 T32 T33 T34 T35 T36
-		T41 T42 T43 T44 T45 T46
-		T51 T52 T53 T54 T55 T56
-		T61 T62 T63 T64 T65 T66];
+Tdense = [
+	T11 T12 T13 T14 T15 T16
+	T21 T22 T23 T24 T25 T26
+	T31 T32 T33 T34 T35 T36
+	T41 T42 T43 T44 T45 T46
+	T51 T52 T53 T54 T55 T56
+	T61 T62 T63 T64 T65 T66
+];
 
 
 
+TG = GraphPartitionedMatrix(
+	Tdense,
+	node_ordering,
+	[T.m[k] for k ∈ node_ordering],
+	[T.n[k] for k ∈ node_ordering],
+	T.adjacency_list,
+)
 
 ####################
 # Test: Stategraph #
@@ -525,7 +606,10 @@ Tdense =
 
 stategraph = StateGraph{Float64}(T);
 @test all([Set(T.adjacency_list[k]) == Set(keys(stategraph[k])) for k in T.node_ordering])
-@test all([all([T.spinners[k].p_in[v_k] == length(v_v) for (v_k, v_v) in v]) for (k, v) in stategraph])
+@test all([
+	all([T.spinners[k].p_in[v_k] == length(v_v) for (v_k, v_v) in v]) for
+	(k, v) in stategraph
+])
 
 
 ############################################
@@ -541,11 +625,38 @@ X = randn(T.N, 30)
 @test Matrix(T, tree) ≈ Tdense
 @test Matrix(T_alternative, tree) ≈ Tdense
 
-[true for i in 1:5, j in 1:6]
+[true for i ∈ 1:5, j ∈ 1:6]
 
-####################
-# Test: HankelFact #
-####################
+#############################
+# Test: HankelFactorization #
+#############################
+
+X = rand(10, 5)
+Y = rand(5, 10)
+
+in_nodes = [4, 8, 9]
+in_ranges = IndexedVector{UnitRange}(4 => 1:3, 8 => 4:7, 9 => 8:10)
+out_nodes = [3, 5, 1, 2]
+out_ranges = IndexedVector{UnitRange}(3 => 1:3, 5 => 4:5, 1 => 6:6, 2 => 7:10)
+
+H = HankelFactorization(X, Y, in_nodes, in_ranges, out_nodes, out_ranges)
+
+@test Xblock(H, [1, 2]) == X[6:10, :]
+@test Xblock(H, [2, 1]) == vcat(X[7:10, :], X[6:6, :])
+@test Xblock(H, [3, 5, 1, 2]) == X
+
+@test Yblock(H, [8, 9]) == Y[:, 4:10]
+@test Yblock(H, [9, 8]) == [Y[:, 8:10] Y[:, 4:7]]
+@test Yblock(H, [4, 8, 9]) == Y
+
+############################################
+# Test: Construction/realization algorithm #
+############################################
+
+root = 1
+tol = 1E-12
+ρ_max = Inf
+TG_TQS, tree = TQSMatrix(TG, root, tol, ρ_max);
 
 
-
+@test Matrix(TG_TQS, tree) ≈ Tdense
