@@ -16,7 +16,7 @@ tol = 1E-12
 ρ_max = Inf
 U, V, ρ = lowrankapprox(A, tol, ρ_max);
 
-@test U*V ≈ A
+@test U * V ≈ A
 @test ρ == 5
 
 ################################
@@ -657,6 +657,5 @@ root = 1
 tol = 1E-12
 ρ_max = Inf
 TG_TQS, tree = TQSMatrix(TG, root, tol, ρ_max);
-
 
 @test Matrix(TG_TQS, tree) ≈ Tdense
