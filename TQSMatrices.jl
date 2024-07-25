@@ -8,7 +8,7 @@ export ZeroMatrix, Spinner, GIRS_is_consistent, TQSMatrix, IndexedVector, Indexe
 export is_a_tree, GIRS_has_no_bounce_back_operators, construct_tree
 export GraphPartitionedMatrix, get_block, get_hankelblock, StateGraph, TransGraph
 export construct_range_vec, HankelFactorization, Xblock, Yblock
-export lowrankapprox
+export lowrankapprox, relative_error
 
 ############
 # packages #
@@ -16,6 +16,30 @@ export lowrankapprox
 using LinearAlgebra
 using IterTools
 using Base.Iterators
+
+
+#############
+# utilities #
+#############
+function relative_error(A::AbstractArray, B::AbstractArray)
+	# Ensure matrices are of the same size
+	if size(A) != size(B)
+		throw(ArgumentError("Matrices A and B must have the same dimensions"))
+	end
+
+	# Compute the Frobenius norm of the difference (absolute error)
+	abs_error = norm(A - B)
+
+	# Compute the Frobenius norm of the reference matrix (for normalization)
+	ref_norm = norm(A)
+
+	# Compute the relative error
+	rel_error = abs_error / ref_norm
+
+	return rel_error
+end
+
+
 
 
 
@@ -489,6 +513,12 @@ function TQSMatrix(spinners, node_ordering)
 	T = eltype(spinners[1])
 	return TQSMatrix{T}(spinners, node_ordering)
 end
+function TQSMatrix(spinners)
+	node_ordering = [s.id for s ∈ spinners]
+	spinners = IndexedVector{Spinner}(spinners)
+	return TQSMatrix(spinners, node_ordering)
+end
+
 Base.eltype(T::TQSMatrix) = typeof(T).parameters[1]
 Base.:size(T::TQSMatrix) = (T.M, T.N)
 construct_tree(T::TQSMatrix, root) = construct_tree(T.adjacency_list, root)
@@ -567,6 +597,22 @@ end
 
 function Base.:Matrix(T::TQSMatrix, tree::Tree)
 	return *(T, Matrix{eltype(T)}(I, T.N, T.N), tree)
+end
+
+
+function GraphPartitionedMatrix(T::TQSMatrix, tree::Tree)
+	# convert to dense matrix
+	Tdense = Matrix(T, tree)
+
+	# equip dense matrix with graph
+	TG = GraphPartitionedMatrix(
+		Tdense,
+		T.node_ordering,
+		[T.m[k] for k ∈ T.node_ordering],
+		[T.n[k] for k ∈ T.node_ordering],
+		T.adjacency_list,
+	)
+	return TG
 end
 
 ##########################
@@ -783,6 +829,8 @@ end
 #############
 # TQS solve #
 #############
+
+
 
 
 
