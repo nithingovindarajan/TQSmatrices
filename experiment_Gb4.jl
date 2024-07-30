@@ -84,10 +84,7 @@ for k ∈ 1:NO_TRIALS
 	T = TQSMatrix([node1, node2, node3, node4])
 	tree = construct_tree(T.adjacency_list, root)
 
-	# Form dense matrix from TQS
-	Tdense = Matrix(T, tree)
-
-	# form graph partitioned matrix
+	# form the dense graph partitioned matrix
 	TG = GraphPartitionedMatrix(T, tree)
 
 	# Form again TQS realization
