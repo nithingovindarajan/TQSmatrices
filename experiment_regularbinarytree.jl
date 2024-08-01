@@ -9,7 +9,7 @@ using Plots
 using SparseArrays
 
 # set seed for experiments
-Random.seed!(1234);
+Random.seed!(1236);
 NO_TRIALS = 10
 
 # settings for the construction algorithm
@@ -28,7 +28,7 @@ function _random_regularbinarytreematrix(k::Int)
 		adj_list = Dict(root => [])
 		return A, root, adj_list
 	elseif k == 2
-		A = [                                                         rand() 0      rand()
+		A = [                                                          rand() 0      rand()
 			0      rand() rand()
 			rand() rand() rand()]
 		root = 3
@@ -47,7 +47,7 @@ function _random_regularbinarytreematrix(k::Int)
 		A32 = [zeros(1, size(A11, 2) - 1) rand()]
 		A33 = rand()
 		# the matrix
-		A = [                                                    A11 A12 A13
+		A = [                                                     A11 A12 A13
 			A21 A22 A23
 			A31 A32 A33]
 		# root    
